@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "paretolab"
+dynamic = ["version"]
+description = "Problem-agnostic experiment manager for single- and multi-objective optimization: tuning, parallel runs, pause/resume, indicators, statistics and a web UI."
+readme = "README.md"
+license = "MPL-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Tarcisio" }]
+keywords = ["optimization", "multi-objective", "metaheuristics", "benchmarking", "experiments", "irace", "pareto"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = ["typer>=0.12"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+paretolab = "paretolab.cli:app"
+
+[project.urls]
+Repository = "https://github.com/tarcioee/paretolab"
+
+[tool.hatch.version]
+path = "src/paretolab/__init__.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
