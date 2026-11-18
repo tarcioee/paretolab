@@ -45,7 +45,12 @@ Infeasible solutions are not part of the front. A per-solution `constraints` fie
      - When a run is killed, everything it started is killed too.
    - Name-based registries: covered by the manifest, since algorithms, variants and parameters are declared there.
    - Not tested automatically: Ctrl+C. Pausing through the PAUSE file is tested.
-5. **Tuning.** The `Tuner` interface and the irace backend, with `recoveryFile` to resume an interrupted tuning unit.
+5. **Tuning.** *(done; see [TUNING.md](TUNING.md))*
+   - The `Tuner` interface and the irace backend, run by `paretolab run` before the runs.
+   - A generic target runner: the cost is the best value (single-objective) or minus the normalized hypervolume (multi-objective), with fixed bounds per instance that are given or calibrated.
+   - Resuming per unit (`best.json`), and inside a unit through irace's `recoveryFile`.
+   - `paretolab doctor` finds Rscript outside the PATH and reports the irace version.
+   - Checked with irace 4.5.1 on a toy problem: it found the known optimum, and a paused unit resumed without repeating finished iterations. CI uses a stand-in for irace, because it has no R.
 6. **Web interface.** Driven by the manifest.
 7. **Validation.**
    - ZDT1 in Python and DTLZ2 in C++.

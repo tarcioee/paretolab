@@ -1,7 +1,6 @@
-"""Command-line interface. Subcommands (run, resume, analyze, serve) are added as each phase lands."""
+"""Command-line interface."""
 import json
 import platform
-import shutil
 from pathlib import Path
 
 import typer
@@ -134,6 +133,9 @@ def status(setup: Path = typer.Argument(..., help="experiment.yaml")) -> None:
                f"{len(state.get('running', []))} running" + (f", ~{format_duration(state['eta_s'])} left"
                                                               if state.get("eta_s") and state["phase"] == "running"
                                                               else ""))
+    for key, unit in (state.get("tuning") or {}).items():
+        values = f" {unit['parameters']}" if unit.get("parameters") else ""
+        typer.echo(f"  tuning {key}: {unit.get('status')}{values}")
     if state.get("message"):
         typer.echo(state["message"])
 
@@ -168,5 +170,10 @@ def doctor() -> None:
     """Check the environment needed by paretolab."""
     typer.echo(f"paretolab {__version__}")
     typer.echo(f"Python    {platform.python_version()} ({platform.system()})")
-    rscript = shutil.which("Rscript")
-    typer.echo(f"Rscript   {rscript or 'not found (only needed for tuning with irace)'}")
+    from paretolab.tuning import rscript as r
+
+    found = r.find_rscript()
+    typer.echo(f"Rscript   {found or 'not found (only needed for tuning). ' + r.INSTALL_R}")
+    if found:
+        version = r.package_version(found, "irace")
+        typer.echo(f"irace     {version or 'not installed. ' + r.INSTALL_IRACE}")

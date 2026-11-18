@@ -6,6 +6,8 @@
   and discarded; the next ``paretolab run`` starts them over.
 * Time limit: the program receives ``{time_limit_s}`` and should stop by itself; one still alive after the limit
   plus a grace period is killed (with everything it started) and stored as an error.
+* Tuning: with ``tuning.enabled`` the algorithm variants are tuned first (paretolab.tuning.manager); the runs
+  then use the tuned values. Pausing works the same way during tuning.
 * Disk: before each launch the free space of the output disk is checked; below ``min_free_disk_gb`` the
   experiment pauses with exit code 3.
 """
@@ -58,11 +60,12 @@ class Runner:
         base = Path(setup_path).resolve().parent
         self.output_dir = base / self.setup.output_dir
         self.runs_root = self.output_dir / RUNS
-        self.project_dir = (base / self.setup.project).parent
+        self.project_file = (base / self.setup.project).resolve()
+        self.project_dir = self.project_file.parent
         self.jobs = max(1, jobs or self.setup.parallel_jobs or os.cpu_count() or 1)
         self.retry_failed = retry_failed
         self._print = log
-        #: hook for tuned values: (algorithm, variant) -> dict overriding the planned parameters
+        #: (algorithm, variant) -> the full parameter dict of its runs (default: the planned values)
         self.parameters_for = parameters_for
         self.running: dict = {}
         self.durations: list = []
@@ -93,9 +96,8 @@ class Runner:
         specs = []
         for instance in self.plan.instances:
             for algorithm, variant in self.plan.units:
-                params = dict(self.plan.parameters[(algorithm, variant)])
-                if self.parameters_for:
-                    params.update(self.parameters_for(algorithm, variant) or {})
+                params = (self.parameters_for(algorithm, variant) if self.parameters_for
+                          else dict(self.plan.parameters[(algorithm, variant)]))
                 for seed in self.plan.seeds:
                     specs.append(RunSpec(instance.name, algorithm, variant, seed, params))
         return specs
@@ -146,27 +148,38 @@ class Runner:
             self.pause_file.unlink()
             self.say("removed an old PAUSE request")
         self._snapshot_config()
-        queue, done, failed = self.pending_runs()
+        from paretolab.tuning import TuningFailed
+
+        _, done, failed = self.pending_runs()
         total = self.plan.total_runs
-        self.state = {"paretolab_version": __version__, "phase": "running", "pid": os.getpid(),
-                      "started_at": now_iso(), "total": total, "finished": done, "failed": failed,
-                      "jobs": self.jobs, "message": ""}
+        self.state = {"paretolab_version": __version__, "phase": "tuning" if self.setup.tuning.enabled else "running",
+                      "pid": os.getpid(), "started_at": now_iso(), "total": total, "finished": done,
+                      "failed": failed, "jobs": self.jobs, "message": ""}
         self.save_state()
-        limit = self.setup.budget.time_limit_s
-        self.say(f"{total} runs planned, {done} already finished, {len(queue)} to run, {self.jobs} at a time"
-                 + (f", {format_duration(limit)} per run" if limit else ""))
-        queue = deque(queue)
         try:
-            self._loop(queue)
-        except Paused:
+            if self.setup.tuning.enabled:
+                from paretolab.tuning.manager import TuningStage
+
+                stage = TuningStage(self)
+                stage.run()
+                self.parameters_for = stage.parameters_for
+            queue, done, failed = self.pending_runs()
+            self.save_state(phase="running", message="", finished=done, failed=failed)
+            limit = self.setup.budget.time_limit_s
+            self.say(f"{total} runs planned, {done} already finished, {len(queue)} to run, {self.jobs} at a time"
+                     + (f", {format_duration(limit)} per run" if limit else ""))
+            self._loop(deque(queue))
+        except TuningFailed as exc:
+            self.save_state(phase="failed", message=str(exc))
+            self.say(f"stopped: {exc}")
+            return EXIT_ERROR
+        except (Paused, KeyboardInterrupt) as exc:
             self._stop_all()
-            self.save_state(phase="paused", message="paused by request (PAUSE file)")
-            self.say(f"paused: {self.state['finished']} of {total} runs finished; run again to continue")
-            return EXIT_OK
-        except KeyboardInterrupt:
-            self._stop_all()
-            self.save_state(phase="paused", message="paused by Ctrl+C")
-            self.say(f"paused (Ctrl+C): {self.state['finished']} of {total} runs finished; run again to continue")
+            how = "Ctrl+C" if isinstance(exc, KeyboardInterrupt) else "request (PAUSE file)"
+            where = (" during tuning" if self.state.get("phase") == "tuning"
+                     else f": {self.state['finished']} of {total} runs finished")
+            self.save_state(phase="paused", message=f"paused by {how}{where}")
+            self.say(f"paused{where}; run again to continue")
             return EXIT_OK
         except DiskFull as exc:
             self._stop_all()
@@ -237,11 +250,10 @@ class Runner:
         self.running[proc] = record
 
     def _kill_overdue(self) -> bool:
-        limit = self.setup.budget.time_limit_s
-        if not limit:
+        ceiling = process.kill_ceiling(self.setup.budget)
+        if ceiling is None:
             return False
-        grace = self.setup.budget.kill_grace_s
-        ceiling = limit + (grace if grace is not None else max(10.0, 0.1 * limit))
+        limit = self.setup.budget.time_limit_s
         killed = False
         for proc, record in list(self.running.items()):
             if proc.poll() is None and time.monotonic() - record["start"] > ceiling:

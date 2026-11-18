@@ -9,6 +9,15 @@ SPAWN_OPTIONS = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subproc
                  if WINDOWS else {"start_new_session": True})
 
 
+def kill_ceiling(budget) -> float | None:
+    """Seconds after which a run is killed: the time limit plus a grace (default max(10 s, 10%)); None = never."""
+    limit = budget.time_limit_s
+    if not limit:
+        return None
+    grace = budget.kill_grace_s
+    return limit + (grace if grace is not None else max(10.0, 0.1 * limit))
+
+
 def spawn(args, cwd, log_file) -> subprocess.Popen:
     return subprocess.Popen(args, cwd=str(cwd), stdout=log_file, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                             **SPAWN_OPTIONS)

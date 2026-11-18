@@ -27,14 +27,14 @@ paretolab doctor
 ```bash
 paretolab validate project.yaml          # descreve o problema: docs/CONTRACT.md
 paretolab validate experiment.yaml       # escolhe o que rodar
-paretolab run experiment.yaml            # roda ou retoma e depois analisa: docs/EXECUTION.md
+paretolab run experiment.yaml            # faz o tuning (se ativado), roda ou retoma e depois analisa: docs/EXECUTION.md
 paretolab pause experiment.yaml          # ou Ctrl+C; rode `run` de novo para continuar
 paretolab analyze experiment.yaml        # indicadores, testes, tabelas e figuras: docs/ANALYSIS.md
 ```
 
 A documentação detalhada em `docs/` está em inglês por enquanto. A versão em português sai junto com a v0.1.
 
-O tuning também precisa do R com o pacote `irace`.
+O tuning também precisa do R com o pacote `irace`; veja [docs/TUNING.md](docs/TUNING.md).
 
 ## Licença
 

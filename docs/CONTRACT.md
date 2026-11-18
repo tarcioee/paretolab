@@ -61,10 +61,12 @@ budget: {max_evaluations: 100000, time_limit_s: 60}   # at least one; the time l
                                 # optional kill_grace_s: kill a run alive at time_limit_s + grace (default max(10 s, 10%))
 parallel_jobs: 0                # 0 = number of CPU cores
 parameters:                     # fixed values over the manifest defaults; "alg/variant" wins over "alg"
+                                # with tuning enabled, the parameters fixed here are not tuned
   ils: {k: 5}
   ils/best: {move: oropt}
 min_free_disk_gb: 1.0           # pause (exit code 3) below this free space
-tuning: {enabled: true, tuner: irace, max_experiments: 2000, instances: [gr17]}
+tuning: {enabled: true, tuner: irace, max_experiments: 2000, instances: [gr17], seed: 1}
+                                # multi-objective also: bounds, calibration_runs; see docs/TUNING.md
 indicators: [best, gap]         # default: hv + igd_plus (multi); best (+ gap when all optima are known) (single)
 normalization: {method: minmax, reference_offset: 0.1}   # HV reference point at 1.1 per objective
 statistics: {tests: [friedman, nemenyi, wilcoxon_holm], alpha: 0.05, blocks: instances, aggregation: median}

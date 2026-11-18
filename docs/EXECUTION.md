@@ -1,5 +1,7 @@
 # Running an experiment
 
+With `tuning.enabled`, `paretolab run` first tunes the algorithm variants ([TUNING.md](TUNING.md)); pausing and resuming work the same way during tuning.
+
 ```bash
 paretolab run experiment.yaml            # run (or resume) every planned run, then analyse
 paretolab run experiment.yaml -j 8       # 8 runs at a time (default: setup.parallel_jobs, 0 = all cores)
@@ -34,7 +36,7 @@ Each run's parameters are built in layers. A later layer wins over an earlier on
 1. the defaults in the manifest;
 2. `setup.parameters["<algorithm>"]`;
 3. `setup.parameters["<algorithm>/<variant>"]`;
-4. tuned values (phase 5).
+4. tuned values, when tuning is enabled ([TUNING.md](TUNING.md)). Parameters fixed in the setup are not tuned, so they keep their setup values.
 
 ### Time limit
 
@@ -68,6 +70,7 @@ The default `kill_grace_s` is the larger of 10 s and 10% of the limit.
 | `state.json` | phase, counts, runs in progress, mean run time, estimated time left (read by `status` and the web interface) |
 | `paretolab.log` | timestamped messages, including failures |
 | `experiment_used.json` | setup and project of the last run |
+| `tuning/` | tuning files and results, when tuning is enabled ([TUNING.md](TUNING.md)) |
 | `analysis/` | written by `paretolab analyze`, which `run` also calls at the end |
 
-Exit codes: 0 = done or paused, 1 = unexpected error, 2 = invalid setup or project, 3 = paused for lack of disk space.
+Exit codes: 0 = done or paused, 1 = a tuning failed or an unexpected error, 2 = invalid setup or project, 3 = paused for lack of disk space.

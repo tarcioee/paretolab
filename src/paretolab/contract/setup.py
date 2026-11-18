@@ -40,6 +40,14 @@ class Tuning(Strict):
     instances: list[str] | None = None
     #: Budget of each tuning run; default: the experiment's budget.
     budget: Budget | None = None
+    #: Seed of the tuner itself (irace's ``seed``), so a tuning can be repeated.
+    seed: int = 1
+    #: Multi-objective only. The tuning cost is the hypervolume of each run's front after a min-max normalization
+    #: with FIXED bounds per training instance: ``{instance: [[min, max], ...]}``, one pair per objective. Instances
+    #: left out are calibrated: every algorithm variant runs its default configuration ``calibration_runs`` times
+    #: and the bounds are taken from the union of the fronts.
+    bounds: dict[str, list[tuple[float, float]]] = Field(default_factory=dict)
+    calibration_runs: int = Field(3, gt=0)
 
 
 class Normalization(Strict):
@@ -72,7 +80,7 @@ class Setup(Strict):
     #: Runs at the same time; 0 = number of CPU cores.
     parallel_jobs: int = Field(0, ge=0)
     #: Fixed hyperparameter values, keyed by "algorithm" or "algorithm/variant" (the latter wins); they override
-    #: the manifest defaults. Tuned values, when tuning is enabled, override both.
+    #: the manifest defaults. With tuning enabled, the parameters fixed here are not tuned; the others are.
     parameters: dict[str, dict[str, ParamValue]] = Field(default_factory=dict)
     #: Runs are paused (exit code 3) when the output disk has less free space than this.
     min_free_disk_gb: float = Field(1.0, ge=0)
@@ -136,7 +144,11 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
         return [manifest.instance(n) for n in names if n in known]
 
     instances = pick_instances(setup.instances, "instances")
-    tuning_instances = pick_instances(setup.tuning.instances, "tuning.instances") if setup.tuning.enabled else []
+    tuning_instances = []
+    if setup.tuning.enabled:
+        tuning_instances = (pick_instances(setup.tuning.instances, "tuning.instances")
+                            if setup.tuning.instances is not None else list(instances))
+        _check_bounds(setup, manifest, tuning_instances, problems)
 
     units = []
     for entry in setup.algorithms or [a.name for a in manifest.algorithms]:
@@ -173,6 +185,30 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
         raise PlanError("\n".join(problems))
     return Plan(instances=instances, units=units, seeds=setup.seed_list, indicators=list(indicators),
                 tuning_instances=tuning_instances, parameters=parameters)
+
+
+def _check_bounds(setup: Setup, manifest: Manifest, tuning_instances, problems) -> None:
+    bounds = setup.tuning.bounds
+    if not bounds:
+        return
+    if not manifest.is_multiobjective:
+        problems.append("tuning.bounds: only used by multi-objective projects")
+        return
+    names = {i.name for i in tuning_instances}
+    for instance, pairs in bounds.items():
+        if instance not in names:
+            problems.append(f"tuning.bounds: '{instance}' is not a training instance; they are {sorted(names)}")
+        elif len(pairs) != len(manifest.objectives):
+            problems.append(f"tuning.bounds.{instance}: needs one [min, max] per objective "
+                            f"({len(manifest.objectives)}), got {len(pairs)}")
+        elif any(not low <= high for low, high in pairs):
+            problems.append(f"tuning.bounds.{instance}: every pair must be [min, max] with min <= max")
+
+
+def tuned_parameter_names(setup: Setup, manifest: Manifest, algorithm: str, variant: str) -> list[str]:
+    """Parameters the tuner searches for one unit: all of the algorithm's, except those fixed in the setup."""
+    fixed = set(setup.parameters.get(algorithm, {})) | set(setup.parameters.get(f"{algorithm}/{variant}", {}))
+    return [p.name for p in manifest.algorithm(algorithm).parameters if p.name not in fixed]
 
 
 def _resolve_parameters(setup: Setup, manifest: Manifest, units, problems) -> dict:
