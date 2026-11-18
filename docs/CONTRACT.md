@@ -58,7 +58,12 @@ instances: [burma14, gr17]      # default: all instances
 algorithms: [ils/first, sa]     # "alg" = all its variants, "alg/variant" = one; default: all
 seeds: {count: 30, start: 1}    # or an explicit list: [1, 2, 3]
 budget: {max_evaluations: 100000, time_limit_s: 60}   # at least one; the time limit is per run
+                                # optional kill_grace_s: kill a run alive at time_limit_s + grace (default max(10 s, 10%))
 parallel_jobs: 0                # 0 = number of CPU cores
+parameters:                     # fixed values over the manifest defaults; "alg/variant" wins over "alg"
+  ils: {k: 5}
+  ils/best: {move: oropt}
+min_free_disk_gb: 1.0           # pause (exit code 3) below this free space
 tuning: {enabled: true, tuner: irace, max_experiments: 2000, instances: [gr17]}
 indicators: [best, gap]         # default: hv + igd_plus (multi); best (+ gap when all optima are known) (single)
 normalization: {method: minmax, reference_offset: 0.1}   # HV reference point at 1.1 per objective

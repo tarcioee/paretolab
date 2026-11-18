@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from paretolab.contract._base import SCHEMA_VERSION, Strict, duplicates
-from paretolab.contract.manifest import Instance, Manifest
+from paretolab.contract.manifest import Instance, Manifest, ParamValue
 
 MULTIOBJECTIVE_INDICATORS = ("hv", "igd_plus", "igd", "epsilon_additive")
 SINGLE_OBJECTIVE_INDICATORS = ("best", "gap")
@@ -19,8 +19,10 @@ class SeedRange(Strict):
 
 class Budget(Strict):
     max_evaluations: int | None = Field(None, gt=0)
-    #: Wall-clock limit of ONE run, in seconds.
+    #: Wall-clock limit of ONE run, in seconds. The program receives it ({time_limit_s}) and should stop by itself.
     time_limit_s: float | None = Field(None, gt=0)
+    #: A run still alive after time_limit_s + this grace is killed (default: max(10 s, 10% of the limit)).
+    kill_grace_s: float | None = Field(None, ge=0)
 
     @model_validator(mode="after")
     def _check(self):
@@ -69,6 +71,11 @@ class Setup(Strict):
     budget: Budget
     #: Runs at the same time; 0 = number of CPU cores.
     parallel_jobs: int = Field(0, ge=0)
+    #: Fixed hyperparameter values, keyed by "algorithm" or "algorithm/variant" (the latter wins); they override
+    #: the manifest defaults. Tuned values, when tuning is enabled, override both.
+    parameters: dict[str, dict[str, ParamValue]] = Field(default_factory=dict)
+    #: Runs are paused (exit code 3) when the output disk has less free space than this.
+    min_free_disk_gb: float = Field(1.0, ge=0)
     tuning: Tuning = Field(default_factory=Tuning)
     #: Default: hv + igd_plus (multi-objective); best, plus gap when every instance has a known optimum (single).
     indicators: list[str] | None = None
@@ -104,6 +111,7 @@ class Plan:
     seeds: list
     indicators: list
     tuning_instances: list   # list[Instance]
+    parameters: dict         # {(algorithm, variant): {name: value}}: manifest defaults + setup values
 
     @property
     def total_runs(self) -> int:
@@ -160,7 +168,33 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
         if no_optimum:
             problems.append(f"indicators: 'gap' needs a known optimum, missing for instances {no_optimum}")
 
+    parameters = _resolve_parameters(setup, manifest, units, problems)
     if problems:
         raise PlanError("\n".join(problems))
     return Plan(instances=instances, units=units, seeds=setup.seed_list, indicators=list(indicators),
-                tuning_instances=tuning_instances)
+                tuning_instances=tuning_instances, parameters=parameters)
+
+
+def _resolve_parameters(setup: Setup, manifest: Manifest, units, problems) -> dict:
+    for key, values in setup.parameters.items():
+        name, _, variant = key.partition("/")
+        algorithm = next((a for a in manifest.algorithms if a.name == name), None)
+        if algorithm is None or (variant and variant not in algorithm.variants):
+            problems.append(f"parameters: '{key}' is not an algorithm (or algorithm/variant) of the project")
+            continue
+        space = {p.name: p for p in algorithm.parameters}
+        for pname, value in values.items():
+            if pname not in space:
+                problems.append(f"parameters: '{key}' has no parameter '{pname}'; it has {sorted(space)}")
+                continue
+            error = space[pname].value_error(value)
+            if error:
+                problems.append(f"parameters: {key}.{pname}: {error}")
+    resolved = {}
+    for name, variant in units:
+        algorithm = manifest.algorithm(name)
+        values = {p.name: p.default for p in algorithm.parameters if p.default is not None}
+        values.update(setup.parameters.get(name, {}))
+        values.update(setup.parameters.get(f"{name}/{variant}", {}))
+        resolved[(name, variant)] = values
+    return resolved

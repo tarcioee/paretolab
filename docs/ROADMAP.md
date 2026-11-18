@@ -38,9 +38,13 @@ Infeasible solutions are not part of the front. A per-solution `constraints` fie
    - Still open:
      - with 3 or more objectives there is no front plot (parallel coordinates are a candidate);
      - there is no multi-objective convergence plot from `convergence_trace` yet.
-4. **Execution.**
-   - Port the state, pause and resume, parallel runs and per-run time limit.
-   - Name-based registries.
+4. **Execution.** *(done; see [EXECUTION.md](EXECUTION.md))*
+   - Ported the state, pause and resume, parallel runs and per-run time limit.
+     - Resume now works per run, not per instance.
+     - Failures are stored as results.
+     - When a run is killed, everything it started is killed too.
+   - Name-based registries: covered by the manifest, since algorithms, variants and parameters are declared there.
+   - Not tested automatically: Ctrl+C. Pausing through the PAUSE file is tested.
 5. **Tuning.** The `Tuner` interface and the irace backend, with `recoveryFile` to resume an interrupted tuning unit.
 6. **Web interface.** Driven by the manifest.
 7. **Validation.**

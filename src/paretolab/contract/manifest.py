@@ -63,11 +63,6 @@ class Parameter(Strict):
                 raise ValueError(f"parameter '{self.name}': an integer range needs integer bounds")
             if self.log and low <= 0:
                 raise ValueError(f"parameter '{self.name}': log scale needs a positive range")
-            if self.default is not None:
-                if isinstance(self.default, (str, bool)) or not low <= self.default <= high:
-                    raise ValueError(f"parameter '{self.name}': default {self.default!r} is outside {list(self.range)}")
-                if self.type == "integer" and self.default != int(self.default):
-                    raise ValueError(f"parameter '{self.name}': default must be an integer")
         else:
             if not self.values:
                 raise ValueError(f"parameter '{self.name}': type '{self.type}' needs a non-empty 'values' list")
@@ -75,9 +70,22 @@ class Parameter(Strict):
                 raise ValueError(f"parameter '{self.name}': 'range' and 'log' are only for real/integer parameters")
             if duplicates(str(v) for v in self.values):
                 raise ValueError(f"parameter '{self.name}': repeated values {duplicates(str(v) for v in self.values)}")
-            if self.default is not None and self.default not in self.values:
-                raise ValueError(f"parameter '{self.name}': default {self.default!r} is not one of the values")
+        if self.default is not None:
+            error = self.value_error(self.default)
+            if error:
+                raise ValueError(f"parameter '{self.name}': default {error}")
         return self
+
+    def value_error(self, value) -> str | None:
+        """Why ``value`` is not valid for this parameter, or None if it is."""
+        if self.type in ("real", "integer"):
+            low, high = self.range
+            if isinstance(value, (str, bool)) or not low <= value <= high:
+                return f"{value!r} is outside {list(self.range)}"
+            if self.type == "integer" and value != int(value):
+                return f"{value!r} must be an integer"
+            return None
+        return None if value in self.values else f"{value!r} is not one of the values {self.values}"
 
 
 class Algorithm(Strict):

@@ -22,6 +22,16 @@ pip install git+https://github.com/tarcioee/paretolab
 paretolab doctor
 ```
 
+## Use
+
+```bash
+paretolab validate project.yaml          # describe your problem: docs/CONTRACT.md
+paretolab validate experiment.yaml       # choose what to run
+paretolab run experiment.yaml            # run or resume, then analyse: docs/EXECUTION.md
+paretolab pause experiment.yaml          # or Ctrl+C; `run` again to continue
+paretolab analyze experiment.yaml        # indicators, tests, tables and figures: docs/ANALYSIS.md
+```
+
 Tuning also needs R with the `irace` package.
 
 ## License

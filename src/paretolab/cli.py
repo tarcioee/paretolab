@@ -77,6 +77,68 @@ def schema(kind: str = typer.Argument(..., help="one of: " + ", ".join(SCHEMAS))
 
 
 @app.command()
+def run(
+    setup: Path = typer.Argument(..., help="experiment.yaml"),
+    jobs: int | None = typer.Option(None, "--jobs", "-j", min=1, help="runs at the same time (default: setup)"),
+    retry_failed: bool = typer.Option(False, "--retry-failed", help="run again the runs stored as errors"),
+    no_analysis: bool = typer.Option(False, "--no-analysis", help="do not analyse when all runs are finished"),
+) -> None:
+    """Run (or resume) every planned run, then analyse. Finished runs are never repeated."""
+    from paretolab.contract import ContractError
+    from paretolab.execution import EXIT_OK, EXIT_SETUP, Runner
+
+    try:
+        runner = Runner(setup, jobs=jobs, retry_failed=retry_failed, log=typer.echo)
+    except ContractError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(EXIT_SETUP) from None
+    code = runner.run()
+    if code != EXIT_OK or runner.state.get("phase") != "done":
+        raise typer.Exit(code)
+    if not no_analysis:
+        analyze(setup, runs_dir=None, no_figures=False)
+
+
+@app.command()
+def pause(setup: Path = typer.Argument(..., help="experiment.yaml")) -> None:
+    """Ask a running experiment to pause (the runs in progress are stopped and redone on the next run)."""
+    from paretolab.contract import ContractError, Setup, load_model
+    from paretolab.execution.state import PAUSE_FILE
+
+    try:
+        output_dir = Path(setup).parent / load_model(setup, Setup).output_dir
+    except ContractError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(2) from None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / PAUSE_FILE).write_text("pause requested\n", encoding="utf-8")
+    typer.echo(f"pause requested ({output_dir / PAUSE_FILE}); the experiment stops within a second")
+
+
+@app.command()
+def status(setup: Path = typer.Argument(..., help="experiment.yaml")) -> None:
+    """Show the progress of an experiment."""
+    from paretolab.contract import ContractError, Setup, load_model
+    from paretolab.execution.state import format_duration, read_state
+
+    try:
+        output_dir = Path(setup).parent / load_model(setup, Setup).output_dir
+    except ContractError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(2) from None
+    state = read_state(output_dir)
+    if state is None:
+        typer.echo("not started")
+        return
+    typer.echo(f"{state['phase']}: {state['finished']} of {state['total']} runs finished, {state['failed']} failed, "
+               f"{len(state.get('running', []))} running" + (f", ~{format_duration(state['eta_s'])} left"
+                                                              if state.get("eta_s") and state["phase"] == "running"
+                                                              else ""))
+    if state.get("message"):
+        typer.echo(state["message"])
+
+
+@app.command()
 def analyze(
     setup: Path = typer.Argument(..., help="experiment.yaml"),
     runs_dir: Path | None = typer.Option(None, "--runs-dir",
