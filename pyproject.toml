@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering",
 ]
-dependencies = ["typer>=0.12"]
+dependencies = ["typer>=0.12", "pydantic>=2.6", "pyyaml>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
@@ -40,3 +40,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = ["B008"]  # typer declares CLI options as call defaults

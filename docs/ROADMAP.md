@@ -15,24 +15,20 @@
 | Distribution | GitHub only until v1.0. |
 | License | MPL-2.0. |
 
-## Result schema (draft)
+## Contract
 
-Each run writes one `result.json` file with these fields:
+The contract is specified in [CONTRACT.md](CONTRACT.md).
 
-- `schema_version`.
-- Run identity: instance, algorithm, variant, seed and parameters.
-- `objectives_sense`.
-- `status`: `ok`, `timeout` or `error`.
-- Effort: evaluations and wall time.
-- Solutions: `front` (objective vectors), with optional `variables` and `constraints`.
-- `convergence_trace` (optional).
-- `metadata`, which is free-form. The core ignores it and only plugins read it.
+The user's program writes a minimal *run output*. Only `front` is required. Optional fields are `status`, `evaluations`, `wall_time_s`, `variables`, `convergence_trace` and `metadata`. paretolab then adds the run's identity and stores the complete *run result*.
+
+Infeasible solutions are not part of the front. A per-solution `constraints` field was considered and left out until a use appears.
 
 ## Phases
 
 1. **Repository skeleton.** Packaging, CLI, CI on Windows and Linux. *(done)*
-2. **Contracts.**
+2. **Contracts.** *(done)*
    - Schemas for the manifest, the setup and the results.
+   - `paretolab validate` and `paretolab schema`.
 3. **Analysis.**
    - Multi-objective indicators for any number of objectives (moocore).
    - EAF plots.
