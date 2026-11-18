@@ -1,0 +1,15 @@
+# Single-objective example: iterated local search on two small TSPLIB instances with known optima.
+name: tsp
+description: Iterated local search on burma14 and gr17 (TSPLIB), whose optimal tour lengths are known.
+objectives:
+  - {name: length, sense: min}
+instances:
+  - {name: burma14, path: instances/burma14.tsp, optimum: 3323}
+  - {name: gr17, path: instances/gr17.tsp, optimum: 2085}
+algorithms:
+  - name: ils
+    variants: [two_opt, swap]
+    parameters:
+      - {name: strength, type: integer, range: [1, 4], default: 1}
+      - {name: accept, type: categorical, values: [better, always], default: better}
+command: ["{python}", ils.py, "{instance_path}", "{variant}", "{seed}", "{max_evaluations}", "{result_file}", "{params}"]

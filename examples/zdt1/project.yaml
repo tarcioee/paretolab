@@ -1,0 +1,16 @@
+# Multi-objective example in Python: NSGA-II against random search on ZDT1 (both objectives minimized).
+name: zdt1
+description: A small NSGA-II and a random search on ZDT1, 30 variables; the true front is f2 = 1 - sqrt(f1).
+objectives:
+  - {name: f1, sense: min}
+  - {name: f2, sense: min}
+instances:
+  - zdt1
+algorithms:
+  - name: nsga2
+    parameters:
+      - {name: pop_size, type: integer, range: [20, 200], default: 50}
+      - {name: crossover_prob, type: real, range: [0.5, 1.0], default: 0.9}
+      - {name: mutation_eta, type: real, range: [5, 50], default: 20}
+  - name: random
+command: ["{python}", moea.py, "{algorithm}", "{seed}", "{max_evaluations}", "{result_file}", "{params}"]

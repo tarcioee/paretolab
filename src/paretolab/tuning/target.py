@@ -43,7 +43,8 @@ def execute(manifest: Manifest, project_dir, *, instance: str, algorithm: str, v
     result_file = work_dir / "output.json"
     args = render_command(manifest, instance=instance, algorithm=algorithm, variant=variant, seed=seed,
                           output_dir=str(work_dir), result_file=str(result_file), parameters=parameters,
-                          max_evaluations=budget.max_evaluations, time_limit_s=budget.time_limit_s)
+                          max_evaluations=budget.max_evaluations, time_limit_s=budget.time_limit_s,
+                          project_dir=project_dir)
     ceiling = process.kill_ceiling(budget)
     log_path = work_dir / "log.txt"
     with open(log_path, "wb") as log:

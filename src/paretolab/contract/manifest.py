@@ -8,7 +8,7 @@ from pydantic import Field, field_validator, model_validator
 from paretolab.contract._base import SCHEMA_VERSION, Name, Sense, Strict, duplicates
 
 #: Placeholders accepted in ``command``. ``{params}`` must be a token of its own: it expands to several arguments.
-PLACEHOLDERS = frozenset({"executable", "instance", "instance_path", "algorithm", "variant", "seed",
+PLACEHOLDERS = frozenset({"python", "executable", "instance", "instance_path", "algorithm", "variant", "seed",
                           "max_evaluations", "time_limit_s", "output_dir", "result_file", "params"})
 ParamValue = bool | int | float | str
 

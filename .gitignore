@@ -7,3 +7,8 @@ dist/
 .pytest_cache/
 .ruff_cache/
 .coverage
+
+# outputs and binaries of the examples
+examples/*/results/
+examples/dtlz2/dtlz2
+examples/dtlz2/dtlz2.exe

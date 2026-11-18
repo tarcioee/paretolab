@@ -1,0 +1,5 @@
+# 1 instance x 2 algorithms x 15 seeds = 30 runs.
+project: project.yaml
+output_dir: results
+seeds: {count: 15}
+budget: {max_evaluations: 20000}

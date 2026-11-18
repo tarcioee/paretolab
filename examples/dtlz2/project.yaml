@@ -1,0 +1,18 @@
+# Multi-objective example in C++: a PAES-like (1+1) strategy against random search on DTLZ2, 3 objectives.
+# Build the program first:  g++ -O2 -std=c++17 dtlz2.cpp -o dtlz2
+name: dtlz2
+description: A (1+1) evolution strategy with a bounded Pareto archive against random search on DTLZ2 (3 objectives).
+objectives:
+  - {name: f1, sense: min}
+  - {name: f2, sense: min}
+  - {name: f3, sense: min}
+instances:
+  - dtlz2
+algorithms:
+  - name: paes
+    parameters:
+      - {name: sigma, type: real, range: [0.01, 0.5], default: 0.1, log: true}
+      - {name: archive_size, type: integer, range: [20, 200], default: 100}
+  - name: random
+executable: ./dtlz2
+command: ["{executable}", "{algorithm}", "{seed}", "{max_evaluations}", "{result_file}", "{params}"]

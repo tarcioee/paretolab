@@ -33,6 +33,8 @@ paretolab analyze experiment.yaml        # indicators, tests, tables and figures
 paretolab ui experiment.yaml             # all of the above from a local web page: docs/WEB.md
 ```
 
+Worked examples (TSP, ZDT1, DTLZ2) are in [examples/](examples).
+
 Tuning also needs R with the `irace` package; see [docs/TUNING.md](docs/TUNING.md).
 
 ## License

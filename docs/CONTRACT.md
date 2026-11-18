@@ -41,7 +41,8 @@ param_format: "--{name}={value}"  # how each parameter becomes arguments; e.g. "
 
 | Placeholder | Value |
 |---|---|
-| `{executable}` | the `executable` field |
+| `{executable}` | the `executable` field. A path (`./solver`, `bin/solver`) is relative to the project file; on Windows `.exe` is added when needed. A bare name is looked up on the PATH. |
+| `{python}` | the Python interpreter running paretolab (portable way to run a Python solver) |
 | `{instance}`, `{instance_path}` | the instance name, and its `path` (the name if there is no path) |
 | `{algorithm}`, `{variant}` | the algorithm and variant being run |
 | `{seed}` | the run's seed. **Required.** |

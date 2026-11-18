@@ -1,0 +1,5 @@
+# 2 instances x 2 variants x 10 seeds = 40 runs, a few seconds in all.
+project: project.yaml
+output_dir: results
+seeds: {count: 10}
+budget: {max_evaluations: 3000}

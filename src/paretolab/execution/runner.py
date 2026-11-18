@@ -258,7 +258,8 @@ class Runner:
         args = render_command(self.manifest, instance=spec.instance, algorithm=spec.algorithm,
                               variant=spec.variant, seed=spec.seed, output_dir=str(folder),
                               result_file=str(folder / OUTPUT_FILE), parameters=spec.parameters,
-                              max_evaluations=budget.max_evaluations, time_limit_s=budget.time_limit_s)
+                              max_evaluations=budget.max_evaluations, time_limit_s=budget.time_limit_s,
+                              project_dir=self.project_dir)
         log = open(folder / LOG_FILE, "wb")
         record = {"spec": spec, "dir": folder, "args": args, "log": log, "start": time.monotonic()}
         try:

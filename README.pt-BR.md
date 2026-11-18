@@ -35,6 +35,8 @@ paretolab ui experiment.yaml             # tudo isso numa página web local: doc
 
 A documentação detalhada em `docs/` está em inglês por enquanto. A versão em português sai junto com a v0.1.
 
+Exemplos completos (TSP, ZDT1, DTLZ2) estão em [examples/](examples).
+
 O tuning também precisa do R com o pacote `irace`; veja [docs/TUNING.md](docs/TUNING.md).
 
 ## Licença
