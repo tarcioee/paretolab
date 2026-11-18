@@ -39,7 +39,7 @@ from paretolab.contract.setup import (
 )
 from paretolab.execution import process
 from paretolab.execution.runner import LAUNCHED_AT_ENV
-from paretolab.execution.state import ACTIVE_PHASES, PAUSE_FILE, read_state
+from paretolab.execution.state import ACTIVE_PHASES, PAUSE_FILE, STATE_FILE, read_state
 
 STATIC = Path(__file__).with_name("static")
 MAX_BODY = 1 << 20
@@ -107,7 +107,7 @@ class Workspace:
                                 if project_path else "project.yaml")
         self.lock = threading.Lock()
         self.children: dict = {}          # kind -> Popen started by this interface
-        self._grid = (0.0, None, None)    # (time, output_dir, grid)
+        self._grid = (0.0, None, None)    # (time, (output_dir, state.json mtime), grid)
         self._statuses: dict = {}         # result path -> (mtime_ns, status)
 
     # ------------------------------------------------------------------ files
@@ -308,8 +308,12 @@ class Workspace:
     def grid(self) -> dict | None:
         """Finished and failed runs per (instance, algorithm variant) of the saved setup; refreshed every few s."""
         out = self.output_dir()
-        stamp, cached_out, cached = self._grid
-        if cached is not None and cached_out == out and time.time() - stamp < GRID_REFRESH_S:
+        try:
+            key = (out, (out / STATE_FILE).stat().st_mtime_ns) if out else None
+        except OSError:
+            key = (out, None)
+        stamp, cached_key, cached = self._grid
+        if cached is not None and cached_key == key and time.time() - stamp < GRID_REFRESH_S:
             return cached
         setup = self.saved_setup()
         if setup is None or out is None:
@@ -333,7 +337,7 @@ class Workspace:
             cells.append(row)
         grid = {"instances": [i.name for i in plan.instances], "units": [f"{a}/{v}" for a, v in plan.units],
                 "cells": cells}
-        self._grid = (time.time(), out, grid)
+        self._grid = (time.time(), key, grid)
         return grid
 
     # ------------------------------------------------------------------ API: analysis
