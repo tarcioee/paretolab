@@ -18,6 +18,30 @@ def kill_ceiling(budget) -> float | None:
     return limit + (grace if grace is not None else max(10.0, 0.1 * limit))
 
 
+def pid_alive(pid) -> bool:
+    """Whether process ``pid`` is running. Never ``os.kill(pid, 0)`` on Windows: there it terminates the process."""
+    if not pid:
+        return False
+    if WINDOWS:
+        import ctypes
+
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = k32.OpenProcess(0x1000, False, int(pid))   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return False
+        code = ctypes.c_ulong()
+        ok = k32.GetExitCodeProcess(handle, ctypes.byref(code))
+        k32.CloseHandle(handle)
+        return bool(ok) and code.value == 259               # STILL_ACTIVE
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def spawn(args, cwd, log_file) -> subprocess.Popen:
     return subprocess.Popen(args, cwd=str(cwd), stdout=log_file, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                             **SPAWN_OPTIONS)

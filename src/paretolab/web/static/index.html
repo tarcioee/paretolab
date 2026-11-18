@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>paretolab</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">paretolab</div>
+  <div class="where"><span id="project-name">…</span> <span class="muted" id="setup-name"></span></div>
+  <span id="phase-badge" class="badge">…</span>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="setup">Setup</button>
+    <button role="tab" data-tab="run">Run</button>
+    <button role="tab" data-tab="results">Results</button>
+    <button role="tab" data-tab="project">Project</button>
+  </nav>
+</header>
+
+<main>
+  <div id="fatal" class="card error" hidden></div>
+
+  <section id="tab-setup" class="tab" hidden>
+    <div class="setup-layout">
+      <form id="setup-form" autocomplete="off" onsubmit="return false"></form>
+      <aside class="card sticky" id="setup-side">
+        <h2>Check</h2>
+        <div id="check-status" class="muted">…</div>
+        <ul id="check-errors" class="errors"></ul>
+        <div id="check-summary"></div>
+        <div class="buttons">
+          <button type="button" class="primary" id="btn-save">Save</button>
+          <button type="button" id="btn-save-run">Save and run</button>
+          <button type="button" class="link" id="btn-discard">Discard changes</button>
+        </div>
+        <p class="muted small" id="save-note"></p>
+        <details><summary>YAML that will be saved</summary><pre id="check-yaml" class="code"></pre></details>
+      </aside>
+    </div>
+  </section>
+
+  <section id="tab-run" class="tab" hidden>
+    <div class="card">
+      <div class="row spread">
+        <div>
+          <h2 id="run-title">…</h2>
+          <p id="run-message" class="muted"></p>
+        </div>
+        <div class="buttons">
+          <label class="check"><input type="checkbox" id="opt-retry"> retry failed runs</label>
+          <button type="button" class="primary" id="btn-run">Start</button>
+          <button type="button" id="btn-pause">Pause</button>
+          <button type="button" class="link" data-open="output">Open output folder</button>
+        </div>
+      </div>
+      <div class="progress"><div id="run-bar"></div></div>
+      <dl class="facts" id="run-facts"></dl>
+    </div>
+    <div class="card" id="tuning-card" hidden>
+      <h2>Tuning</h2>
+      <div id="tuning-table"></div>
+    </div>
+    <div class="card">
+      <h2>Runs per instance and algorithm variant</h2>
+      <p class="muted small">finished / planned; failed runs in red. Refreshed every few seconds.</p>
+      <div id="grid" class="scroll-x"></div>
+      <div id="running-list" class="small"></div>
+    </div>
+    <div class="card">
+      <div class="row spread">
+        <h2>Log</h2>
+        <select id="log-choice" aria-label="log file"></select>
+      </div>
+      <pre id="log" class="code log"></pre>
+    </div>
+  </section>
+
+  <section id="tab-results" class="tab" hidden>
+    <div class="card">
+      <div class="row spread">
+        <div>
+          <h2>Analysis</h2>
+          <p id="an-info" class="muted"></p>
+        </div>
+        <div class="buttons">
+          <label class="check"><input type="checkbox" id="opt-nofig"> without figures</label>
+          <button type="button" class="primary" id="btn-analyze">Analyse now</button>
+          <button type="button" class="link" data-open="analysis">Open analysis folder</button>
+        </div>
+      </div>
+      <details id="an-warnings-box" hidden><summary id="an-warnings-title">Warnings</summary>
+        <ul id="an-warnings" class="small"></ul></details>
+    </div>
+    <div id="an-body"></div>
+  </section>
+
+  <section id="tab-project" class="tab" hidden>
+    <div id="project-body"></div>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

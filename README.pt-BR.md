@@ -30,6 +30,7 @@ paretolab validate experiment.yaml       # escolhe o que rodar
 paretolab run experiment.yaml            # faz o tuning (se ativado), roda ou retoma e depois analisa: docs/EXECUTION.md
 paretolab pause experiment.yaml          # ou Ctrl+C; rode `run` de novo para continuar
 paretolab analyze experiment.yaml        # indicadores, testes, tabelas e figuras: docs/ANALYSIS.md
+paretolab ui experiment.yaml             # tudo isso numa página web local: docs/WEB.md
 ```
 
 A documentação detalhada em `docs/` está em inglês por enquanto. A versão em português sai junto com a v0.1.

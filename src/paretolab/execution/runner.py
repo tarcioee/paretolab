@@ -23,9 +23,20 @@ from paretolab import __version__
 from paretolab.contract import ContractError, RunResult, load_experiment, load_output, render_command, write_result
 from paretolab.contract.layout import RESULT_FILE, RUNS, run_dir
 from paretolab.execution import process
-from paretolab.execution.state import PAUSE_FILE, STATE_FILE, format_duration, free_disk_gb, now_iso, write_json_atomic
+from paretolab.execution.state import (
+    ACTIVE_PHASES,
+    PAUSE_FILE,
+    STATE_FILE,
+    format_duration,
+    free_disk_gb,
+    now_iso,
+    read_state,
+    write_json_atomic,
+)
 
 EXIT_OK, EXIT_ERROR, EXIT_SETUP, EXIT_DISK = 0, 1, 2, 3
+#: Set by a launcher (the web interface) to the time it started `paretolab run`; see Runner.run.
+LAUNCHED_AT_ENV = "PARETOLAB_LAUNCHED_AT"
 OUTPUT_FILE = "output.json"
 LOG_FILE = "log.txt"
 LOOP_S = 0.2
@@ -144,9 +155,19 @@ class Runner:
 
     def run(self) -> int:
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        previous = read_state(self.output_dir) or {}
+        if (previous.get("phase") in ACTIVE_PHASES and previous.get("pid") not in (None, os.getpid())
+                and process.pid_alive(previous["pid"])):
+            self._print(f"ERROR: another paretolab run (process {previous['pid']}) is working on {self.output_dir}; "
+                        f"pause it or wait for it to finish")
+            return EXIT_SETUP
         if self.pause_file.exists():
-            self.pause_file.unlink()
-            self.say("removed an old PAUSE request")
+            # A request made after this run was launched (e.g. from the web interface, while Python was still
+            # starting) is kept; an older one is left over from a previous run.
+            launched = float(os.environ.get(LAUNCHED_AT_ENV) or 0) or time.time()
+            if self.pause_file.stat().st_mtime < launched:
+                self.pause_file.unlink()
+                self.say("removed an old PAUSE request")
         self._snapshot_config()
         from paretolab.tuning import TuningFailed
 

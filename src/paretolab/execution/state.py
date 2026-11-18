@@ -11,6 +11,8 @@ from pathlib import Path
 
 STATE_FILE = "state.json"
 PAUSE_FILE = "PAUSE"
+#: Phases in which a live ``pid`` in state.json means a run is working on the output folder.
+ACTIVE_PHASES = ("tuning", "running")
 
 
 def now_iso() -> str:

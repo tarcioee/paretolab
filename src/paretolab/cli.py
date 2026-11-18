@@ -166,6 +166,27 @@ def analyze(
 
 
 @app.command()
+def ui(
+    setup: Path = typer.Argument(Path("experiment.yaml"), help="experiment.yaml (created on the first save)"),
+    project: Path | None = typer.Option(None, "--project",
+                                        help="manifest of a new setup (default: project.yaml next to it)"),
+    port: int = typer.Option(8765, "--port", min=0, max=65535, help="port on 127.0.0.1 (the next free one is used)"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="do not open the browser"),
+) -> None:
+    """Open the local web interface: edit the setup, run, pause, resume, follow the progress and read the analysis."""
+    from paretolab.web.server import serve
+
+    if not setup.is_file() and project is not None and not project.is_file():
+        typer.echo(f"ERROR: {project} does not exist", err=True)
+        raise typer.Exit(2)
+    try:
+        serve(setup, project, port=port, open_browser=not no_browser, log=typer.echo)
+    except OSError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(2) from None
+
+
+@app.command()
 def doctor() -> None:
     """Check the environment needed by paretolab."""
     typer.echo(f"paretolab {__version__}")

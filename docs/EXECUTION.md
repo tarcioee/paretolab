@@ -8,6 +8,7 @@ paretolab run experiment.yaml -j 8       # 8 runs at a time (default: setup.para
 paretolab run experiment.yaml --retry-failed
 paretolab pause experiment.yaml          # from another terminal; or press Ctrl+C
 paretolab status experiment.yaml
+paretolab ui experiment.yaml             # the same from a web page: docs/WEB.md
 ```
 
 ## One run
@@ -56,7 +57,10 @@ The default `kill_grace_s` is the larger of 10 s and 10% of the limit.
   - `paretolab pause` creates `<output_dir>/PAUSE`;
   - pressing Ctrl+C has the same effect.
 
+  A `PAUSE` file left over from an earlier run is removed when `paretolab run` starts. A launcher can set `PARETOLAB_LAUNCHED_AT` (Unix time) so that a request made after that moment is kept; the web interface does this.
+
   The runs in progress are stopped, and their folders are deleted. The next `paretolab run` starts them over.
+- **One run per folder:** a second `paretolab run` on the same output folder is refused while the first one's process is alive.
 - **Failures** are stored and counted. `--retry-failed` runs them again.
 - **Disk:** before each launch, the free space on the output disk is checked. Below `min_free_disk_gb` (default 1 GB), the experiment pauses with exit code 3.
 - **Configuration changes:** `experiment_used.json` stores the setup and project of the last run. If either changed since then, paretolab says so, because the stored results came from the previous version.

@@ -51,7 +51,10 @@ Infeasible solutions are not part of the front. A per-solution `constraints` fie
    - Resuming per unit (`best.json`), and inside a unit through irace's `recoveryFile`.
    - `paretolab doctor` finds Rscript outside the PATH and reports the irace version.
    - Checked with irace 4.5.1 on a toy problem: it found the known optimum, and a paused unit resumed without repeating finished iterations. CI uses a stand-in for irace, because it has no R.
-6. **Web interface.** Driven by the manifest.
+6. **Web interface.** *(done; see [WEB.md](WEB.md))*
+   - `paretolab ui`: a local page whose setup form is built from the manifest, with live validation, start, pause and resume, progress per instance and variant, tuning status, logs, and the analysis (tables, tests, figures).
+   - Standard library only (`http.server`, plain JavaScript); listens on 127.0.0.1 and refuses other hosts and origins.
+   - Two runs on the same output folder are now refused, and a pause requested while a run is starting is kept.
 7. **Validation.**
    - ZDT1 in Python and DTLZ2 in C++.
    - A small TSP from TSPLIB with a known optimum, for example burma14 and gr17.

@@ -30,6 +30,7 @@ paretolab validate experiment.yaml       # choose what to run
 paretolab run experiment.yaml            # tune (if enabled), run or resume, then analyse: docs/EXECUTION.md
 paretolab pause experiment.yaml          # or Ctrl+C; `run` again to continue
 paretolab analyze experiment.yaml        # indicators, tests, tables and figures: docs/ANALYSIS.md
+paretolab ui experiment.yaml             # all of the above from a local web page: docs/WEB.md
 ```
 
 Tuning also needs R with the `irace` package; see [docs/TUNING.md](docs/TUNING.md).
