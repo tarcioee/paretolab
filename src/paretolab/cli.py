@@ -77,6 +77,31 @@ def schema(kind: str = typer.Argument(..., help="one of: " + ", ".join(SCHEMAS))
 
 
 @app.command()
+def analyze(
+    setup: Path = typer.Argument(..., help="experiment.yaml"),
+    runs_dir: Path | None = typer.Option(None, "--runs-dir",
+                                         help="read results from here instead of <output_dir>/runs"),
+    no_figures: bool = typer.Option(False, "--no-figures", help="skip the figures (faster)"),
+) -> None:
+    """Compute indicators, statistical tests, tables and figures into <output_dir>/analysis."""
+    from paretolab.analysis import analyze as run_analysis
+    from paretolab.contract import ContractError
+
+    try:
+        summary = run_analysis(setup, runs_dir=runs_dir, figures=not no_figures, log=typer.echo)
+    except ContractError as exc:
+        typer.echo(f"ERROR: {exc}", err=True)
+        raise typer.Exit(1) from None
+    for name, info in summary["indicators"].items():
+        ranks = info["mean_ranks"] or {}
+        best = ", ".join(f"{u} ({r:.2f})" for u, r in list(ranks.items())[:3])
+        p = info["friedman_p"]
+        typer.echo(f"{name}: best mean ranks {best or '-'}" + (f"; Friedman p = {p:.3g}" if p is not None else ""))
+    for warning in summary["warnings"]:
+        typer.echo(f"warning: {warning}")
+
+
+@app.command()
 def doctor() -> None:
     """Check the environment needed by paretolab."""
     typer.echo(f"paretolab {__version__}")

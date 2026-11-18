@@ -50,6 +50,10 @@ class Statistics(Strict):
     tests: list[Literal["friedman", "nemenyi", "wilcoxon_holm"]] = Field(
         default_factory=lambda: list(STATISTICAL_TESTS))
     alpha: float = Field(0.05, gt=0, lt=1)
+    #: What a block (a "row" of the tests) is: one instance (its runs aggregated), or one (instance, seed) pair.
+    #: With a single instance, "instances" falls back to "runs".
+    blocks: Literal["instances", "runs"] = "instances"
+    aggregation: Literal["median", "mean"] = "median"
 
 
 class Setup(Strict):

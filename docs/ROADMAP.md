@@ -29,11 +29,15 @@ Infeasible solutions are not part of the front. A per-solution `constraints` fie
 2. **Contracts.** *(done)*
    - Schemas for the manifest, the setup and the results.
    - `paretolab validate` and `paretolab schema`.
-3. **Analysis.**
+3. **Analysis.** *(done; see [ANALYSIS.md](ANALYSIS.md))*
    - Multi-objective indicators for any number of objectives (moocore).
    - EAF plots.
    - Single-objective analysis: gap, convergence curves and ECDF.
    - Statistics, tables and plots.
+   - `paretolab analyze`.
+   - Still open:
+     - with 3 or more objectives there is no front plot (parallel coordinates are a candidate);
+     - there is no multi-objective convergence plot from `convergence_trace` yet.
 4. **Execution.**
    - Port the state, pause and resume, parallel runs and per-run time limit.
    - Name-based registries.

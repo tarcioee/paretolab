@@ -62,7 +62,8 @@ parallel_jobs: 0                # 0 = number of CPU cores
 tuning: {enabled: true, tuner: irace, max_experiments: 2000, instances: [gr17]}
 indicators: [best, gap]         # default: hv + igd_plus (multi); best (+ gap when all optima are known) (single)
 normalization: {method: minmax, reference_offset: 0.1}   # HV reference point at 1.1 per objective
-statistics: {tests: [friedman, nemenyi, wilcoxon_holm], alpha: 0.05}
+statistics: {tests: [friedman, nemenyi, wilcoxon_holm], alpha: 0.05, blocks: instances, aggregation: median}
+                                # blocks: instances (runs aggregated) | runs (one block per instance and seed)
 ```
 
 The available indicators depend on the project:
