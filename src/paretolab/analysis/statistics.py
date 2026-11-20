@@ -14,6 +14,8 @@ import pandas as pd
 import scikit_posthocs as sp
 from scipy import stats
 
+from paretolab.messages import note
+
 
 def block_matrix(df: pd.DataFrame, indicator: str, blocks: str, aggregation: str):
     """(blocks x units matrix, blocks mode actually used, warnings). Blocks with a missing value are dropped."""
@@ -21,7 +23,7 @@ def block_matrix(df: pd.DataFrame, indicator: str, blocks: str, aggregation: str
     data = df[df["status"] != "error"]
     if blocks == "instances" and data["instance"].nunique() < 2:
         blocks = "runs"
-        warnings.append("only one instance: each (instance, seed) pair is a block")
+        warnings.append(note("one_instance_blocks", "only one instance: each (instance, seed) pair is a block"))
     if blocks == "instances":
         matrix = data.pivot_table(index="instance", columns="unit", values=indicator, aggfunc=aggregation,
                                   dropna=False)
@@ -30,8 +32,9 @@ def block_matrix(df: pd.DataFrame, indicator: str, blocks: str, aggregation: str
                                   dropna=False)
     incomplete = matrix.isna().any(axis=1)
     if incomplete.any():
-        warnings.append(f"{int(incomplete.sum())} of {len(matrix)} blocks dropped: some variant has no value "
-                        f"(run missing, failed or without feasible solutions)")
+        warnings.append(note("blocks_dropped", "{dropped} of {total} blocks dropped: some variant has no value "
+                             "(run missing, failed or without feasible solutions)",
+                             dropped=int(incomplete.sum()), total=len(matrix)))
         matrix = matrix[~incomplete]
     return matrix, blocks, warnings
 
@@ -60,12 +63,15 @@ def compare(df: pd.DataFrame, indicator: str, higher_is_better: bool, tests, alp
            "aggregation": aggregation if blocks_used == "instances" else None, "n_blocks": int(n),
            "units": list(matrix.columns), "warnings": warnings}
     if k < 2 or n < 2:
-        out["warnings"].append("at least 2 variants and 2 complete blocks are needed for the tests")
+        out["warnings"].append(note("too_few_for_tests",
+                                    "at least 2 variants and 2 complete blocks are needed for the tests"))
         return out
     ranks = matrix.rank(axis=1, ascending=not higher_is_better, method="average")
     out["mean_ranks"] = {u: float(r) for u, r in ranks.mean().sort_values().items()}
     if n < 10:
-        out["warnings"].append(f"only {n} blocks: the tests have little power (Demsar recommends more than 10)")
+        out["warnings"].append(note("few_blocks",
+                                    "only {n} blocks: the tests have little power (Demsar recommends more than 10)",
+                                    n=int(n)))
 
     if "friedman" in tests and k >= 3:
         if np.allclose(matrix.values, matrix.values[:, :1]):

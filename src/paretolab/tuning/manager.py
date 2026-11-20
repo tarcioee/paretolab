@@ -18,6 +18,7 @@ from paretolab import __version__
 from paretolab.contract import RunOutput
 from paretolab.contract.setup import tuned_parameter_names
 from paretolab.execution.state import now_iso, write_json_atomic
+from paretolab.messages import info, note
 from paretolab.tuning.base import TunerUnavailable, TuningFailed, TuningPaused, TuningUnit
 from paretolab.tuning.irace import IraceTuner
 from paretolab.tuning.target import Interrupted, RunFailed, execute
@@ -66,6 +67,8 @@ class TuningStage:
     # ------------------------------------------------------------------ main
 
     def _update(self, key: str, **fields) -> None:
+        if "message" in fields:
+            fields["message_info"] = info(fields["message"])
         self.units[key].update(fields)
         self.runner.state["tuning"] = self.units
         self.runner.save_state(phase="tuning", message=fields.get("message", ""))
@@ -81,9 +84,11 @@ class TuningStage:
         for algorithm, variant in self.plan.units:
             key = f"{algorithm}/{variant}"
             if not self.tuned_names(algorithm, variant):
-                self.units[key] = {"status": "skipped", "message": "every parameter is fixed in the setup"}
+                message = note("tuning_skipped", "every parameter is fixed in the setup")
+                self.units[key] = {"status": "skipped", "message": message, "message_info": info(message)}
             elif self.load_best(algorithm, variant) is not None:
-                self.units[key] = {"status": "done", "message": f"tuned before ({BEST_FILE})"}
+                message = note("tuned_before", "tuned before ({file})", file=BEST_FILE)
+                self.units[key] = {"status": "done", "message": message, "message_info": info(message)}
             else:
                 todo.append((algorithm, variant))
         self.runner.state["tuning"] = self.units
@@ -103,15 +108,19 @@ class TuningStage:
         for algorithm, variant in todo:
             key = f"{algorithm}/{variant}"
             unit = self._unit(algorithm, variant, bounds)
-            self._update(key, status="running", started_at=now_iso(), message=f"tuning {key}")
+            self._update(key, status="running", started_at=now_iso(),
+                         message=note("tuning_unit", "tuning {unit}", unit=key))
             start = time.monotonic()
             try:
                 result = tuner.tune(unit, self.should_stop, self.runner.say)
             except TuningPaused:
-                self._update(key, status="paused", message=f"tuning of {key} paused; it resumes on the next run")
+                self._update(key, status="paused", message=note("tuning_unit_paused",
+                                                                "tuning of {unit} paused; it resumes on the next run",
+                                                                unit=key))
                 raise Paused() from None
             except KeyboardInterrupt:
-                self._update(key, status="paused", message=f"tuning of {key} stopped by Ctrl+C")
+                self._update(key, status="paused",
+                             message=note("tuning_unit_ctrl_c", "tuning of {unit} stopped by Ctrl+C", unit=key))
                 raise
             except TuningFailed as exc:
                 self._update(key, status="failed", message=str(exc))
@@ -127,7 +136,8 @@ class TuningStage:
                 "budget": self.budget.model_dump(exclude_none=True), "elapsed_s": elapsed,
                 "paretolab_version": __version__, "finished_at": now_iso()})
             self._update(key, status="done", elapsed_s=elapsed, parameters=result["parameters"],
-                         message=f"{key} tuned: {result['parameters']}")
+                         message=note("tuning_unit_done", "{unit} tuned: {parameters}", unit=key,
+                                      parameters=result["parameters"]))
             self.runner.say(f"{key}: tuned in {elapsed:.0f} s: {result['parameters']}")
 
     def _unit(self, algorithm: str, variant: str, bounds: dict) -> TuningUnit:
@@ -209,8 +219,8 @@ class TuningStage:
                                                f"(or give tuning.bounds for this instance)") from None
                         done += 1
                     if finished:
-                        self.runner.save_state(phase="tuning", message=f"calibrating bounds: {done} of "
-                                                                       f"{len(specs)} runs")
+                        self.runner.save_state(phase="tuning", message=note(
+                            "calibrating", "calibrating bounds: {done} of {total} runs", done=done, total=len(specs)))
             except BaseException:
                 abort.set()
                 raise

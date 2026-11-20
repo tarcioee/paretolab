@@ -40,8 +40,12 @@ from paretolab.contract.setup import (
 from paretolab.execution import process
 from paretolab.execution.runner import LAUNCHED_AT_ENV
 from paretolab.execution.state import ACTIVE_PHASES, PAUSE_FILE, STATE_FILE, read_state
+from paretolab.messages import Note, info, plain
 
 STATIC = Path(__file__).with_name("static")
+LANGUAGES = {"en": "English", "pt-BR": "Português"}
+STATIC_TYPES = {".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".json": "application/json",
+                ".svg": "image/svg+xml"}
 MAX_BODY = 1 << 20
 GRID_REFRESH_S = 3.0
 LOG_LINES = 120
@@ -51,9 +55,45 @@ DEFAULT_SETUP = {"output_dir": "results", "seeds": {"count": 10}, "budget": {"ma
 
 
 class ApiError(Exception):
-    def __init__(self, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST):
+    """An error answered to the page: English text plus a code the page may translate."""
+
+    def __init__(self, message: str, status: HTTPStatus = HTTPStatus.BAD_REQUEST, code: str | None = None,
+                 **args):
         super().__init__(message)
-        self.status = status
+        self.status, self.code, self.args_ = status, code, args
+
+
+def validation_issues(exc: ValidationError) -> list[dict]:
+    """The errors of a pydantic validation as messages: coded by pydantic's error type, or by our own Note."""
+    issues = []
+    for e in exc.errors():
+        where = ".".join(str(part) for part in e["loc"])
+        cause = (e.get("ctx") or {}).get("error")
+        if isinstance(cause, Exception) and cause.args and isinstance(cause.args[0], Note):
+            item = info(cause.args[0])
+            if where:
+                item.update(prefix=where, text=f"{where}: {item['text']}")
+            issues.append(item)
+            continue
+        ctx = {k: v for k, v in (e.get("ctx") or {}).items() if k != "error"}
+        message = e["msg"].removeprefix("Value error, ")
+        issues.append({"code": f"pydantic.{e['type']}", "args": plain(ctx),
+                       "prefix": where or None, "text": f"{where or '(top level)'}: {message}"})
+    return issues
+
+
+def legacy_figure(file: str, indicators: dict) -> dict:
+    """What an older summary.json (a plain list of paths) knew about a figure: its kind from its file name."""
+    stem = Path(file).stem
+    kind, _, rest = stem.partition("_")
+    indicator = next((n for n in sorted(indicators, key=len, reverse=True)
+                      if rest == n or rest.startswith(f"{n}_")), None)
+    instance = rest[len(indicator) + 1:] if indicator and rest != indicator else (None if indicator else rest)
+    return {"kind": kind, "indicator": indicator, "instance": instance or None, "file": file}
+
+
+def icon_type(path: Path) -> str:
+    return "image/svg+xml" if path.suffix.lower() == ".svg" else mimetypes.guess_type(path.name)[0] or "image/png"
 
 
 def tail(path: Path, lines: int = LOG_LINES, max_bytes: int = 64 * 1024) -> str:
@@ -100,7 +140,9 @@ def setup_yaml(data: dict) -> str:
 class Workspace:
     """Everything the interface knows about one experiment setup file."""
 
-    def __init__(self, setup_path, project_path=None):
+    def __init__(self, setup_path, project_path=None, language: str | None = None):
+        self.language = language if language in LANGUAGES else None
+        self._tuner: dict | None = None
         self.setup_path = Path(setup_path).resolve()
         self.base = self.setup_path.parent
         self.default_project = (os.path.relpath(Path(project_path).resolve(), self.base).replace(os.sep, "/")
@@ -156,9 +198,46 @@ class Workspace:
             raise ApiError(str(exc), HTTPStatus.UNPROCESSABLE_ENTITY) from None
         return {"path": str(path), "manifest": manifest.model_dump(mode="json"),
                 "multiobjective": manifest.is_multiobjective,
+                "icon": "/api/icon" if self.icon_path(manifest, path) else None,
                 "indicators": list(MULTIOBJECTIVE_INDICATORS if manifest.is_multiobjective
                                    else SINGLE_OBJECTIVE_INDICATORS),
                 "statistical_tests": list(STATISTICAL_TESTS)}
+
+    @staticmethod
+    def icon_path(manifest: Manifest, project_file: Path) -> Path | None:
+        """The project's ui.icon, if it is an image file inside the project's folder."""
+        if not manifest.ui.icon:
+            return None
+        folder = project_file.parent
+        target = (folder / manifest.ui.icon).resolve()
+        return target if inside(folder, target) and target.is_file() else None
+
+    def icon(self) -> Path:
+        data, _, _ = self.raw_setup()
+        try:
+            target = self.icon_path(self.manifest(data), self.project_file(data))
+        except ContractError:
+            target = None
+        if target is None:
+            raise ApiError("no icon", HTTPStatus.NOT_FOUND)
+        return target
+
+    def meta(self) -> dict:
+        """What the page needs besides the project: versions, languages, CPU count, whether tuning can run."""
+        if self._tuner is None:
+            self._tuner = {"checking": True}
+            threading.Thread(target=self._check_tuner, daemon=True).start()
+        return {"version": __version__, "languages": LANGUAGES, "language": self.language,
+                "cpu_count": os.cpu_count() or 1, "tuner": self._tuner, "setup_path": str(self.setup_path)}
+
+    def _check_tuner(self) -> None:
+        from paretolab.tuning import rscript
+
+        found = rscript.find_rscript()
+        version = rscript.package_version(found, "irace") if found else None
+        self._tuner = {"checking": False, "rscript": found, "irace": version,
+                       "ok": bool(found and version),
+                       "help": None if found and version else (rscript.INSTALL_IRACE if found else rscript.INSTALL_R)}
 
     def setup(self) -> dict:
         data, problem, exists = self.raw_setup()
@@ -169,21 +248,24 @@ class Workspace:
         """Validation of a setup (as the CLI does it) and what it would run."""
         if not isinstance(data, dict):
             raise ApiError("the setup must be an object")
-        out = {"ok": False, "errors": [], "summary": None, "yaml": setup_yaml(data)}
+        out = {"ok": False, "errors": [], "issues": [], "summary": None, "yaml": setup_yaml(data)}
         try:
             setup = Setup.model_validate(data)
         except ValidationError as exc:
             out["errors"] = [line.strip()[2:] for line in describe(exc).splitlines()]
+            out["issues"] = validation_issues(exc)
             return out
         try:
             manifest = self.manifest(data)
         except ContractError as exc:
             out["errors"] = [str(exc)]
+            out["issues"] = [info(exc)]
             return out
         try:
             plan = make_plan(setup, manifest)
         except PlanError as exc:
-            out["errors"] = str(exc).splitlines()
+            out["errors"] = [str(p) for p in exc.problems]
+            out["issues"] = [info(p) for p in exc.problems]
             return out
         out["ok"] = True
         out["summary"] = {
@@ -199,10 +281,11 @@ class Workspace:
         result = self.check(data)
         if not result["ok"]:
             raise ApiError("not saved: the setup has errors\n" + "\n".join(result["errors"]),
-                           HTTPStatus.UNPROCESSABLE_ENTITY)
+                           HTTPStatus.UNPROCESSABLE_ENTITY, "not_saved_invalid")
         with self.lock:
             if self.busy():
-                raise ApiError("not saved: the experiment is running; pause it first", HTTPStatus.CONFLICT)
+                raise ApiError("not saved: the experiment is running; pause it first", HTTPStatus.CONFLICT,
+                               "not_saved_running")
             if self.setup_path.is_file():
                 backup = self.setup_path.with_name(self.setup_path.name + ".bak")
                 backup.write_bytes(self.setup_path.read_bytes())
@@ -232,9 +315,10 @@ class Workspace:
             raise ApiError(f"unknown command '{kind}'")
         with self.lock:
             if self.busy():
-                raise ApiError("the experiment (or its analysis) is already running", HTTPStatus.CONFLICT)
+                raise ApiError("the experiment (or its analysis) is already running", HTTPStatus.CONFLICT,
+                               "already_running")
             if self.saved_setup() is None:
-                raise ApiError("save a valid setup first", HTTPStatus.CONFLICT)
+                raise ApiError("save a valid setup first", HTTPStatus.CONFLICT, "save_first")
             out = self.output_dir()
             out.mkdir(parents=True, exist_ok=True)
             args = [sys.executable, "-m", "paretolab", kind, str(self.setup_path)]
@@ -257,7 +341,7 @@ class Workspace:
     def pause(self) -> dict:
         out = self.output_dir()
         if out is None or not self.experiment_alive(read_state(out)):
-            raise ApiError("the experiment is not running", HTTPStatus.CONFLICT)
+            raise ApiError("the experiment is not running", HTTPStatus.CONFLICT, "not_running")
         (out / PAUSE_FILE).write_text("pause requested from the web interface\n", encoding="utf-8")
         return {"pause_requested": True}
 
@@ -268,7 +352,7 @@ class Workspace:
             folders |= {"output": out, "analysis": out / ANALYSIS}
         folder = folders.get(which)
         if folder is None or not folder.is_dir():
-            raise ApiError(f"no folder '{which}' yet", HTTPStatus.NOT_FOUND)
+            raise ApiError(f"no folder '{which}' yet", HTTPStatus.NOT_FOUND, "no_folder", folder=which)
         if os.name == "nt":
             os.startfile(folder)
         else:
@@ -357,20 +441,24 @@ class Workspace:
         from paretolab.analysis.indicators import LABELS
 
         analysis_dir = out / ANALYSIS
-        figures = [Path(f).name for f in summary.get("figures", [])]
+        figures = []
+        for f in summary.get("figures", []):
+            entry = f if isinstance(f, dict) else legacy_figure(f, summary.get("indicators", {}))
+            local = analysis_dir / "figures" / Path(entry["file"]).name
+            if local.is_file():
+                figures.append({"kind": entry["kind"], "indicator": entry.get("indicator"),
+                                "instance": entry.get("instance"), "name": local.name, "url": self.file_url(local)})
         indicators = []
-        for name, info in summary.get("indicators", {}).items():
-            entry = {"name": name, "label": LABELS.get(name, name), "higher_is_better": info["higher_is_better"],
-                     "files": {}, "table": None, "statistics": None,
-                     "figures": [f for f in figures if f == f"cd_{name}.png" or f.startswith((f"box_{name}_",
-                                                                                              f"ecdf_{name}_"))]}
-            for kind, file in (info.get("tables") or {}).items():
+        for name, ind_info in summary.get("indicators", {}).items():
+            entry = {"name": name, "label": LABELS.get(name, name), "higher_is_better": ind_info["higher_is_better"],
+                     "files": {}, "table": None, "statistics": None}
+            for kind, file in (ind_info.get("tables") or {}).items():
                 local = analysis_dir / "tables" / Path(file).name
                 if local.is_file():
                     entry["files"][kind] = self.file_url(local)
             csv = analysis_dir / "tables" / f"{name}.csv"
             if csv.is_file():
-                units, rows = tables.wide(pd.read_csv(csv), info["higher_is_better"])
+                units, rows = tables.wide(pd.read_csv(csv), ind_info["higher_is_better"])
                 entry["table"] = {"units": units, "rows": [{"instance": str(i), "cells": [
                     {"text": t, "best": bool(b)} for t, b in cells]} for i, cells in rows]}
             stats = analysis_dir / "statistics" / f"{name}.json"
@@ -378,14 +466,47 @@ class Workspace:
                 entry["statistics"] = json.loads(stats.read_text(encoding="utf-8"))
                 entry["files"]["statistics"] = self.file_url(stats)
             indicators.append(entry)
-        used = {f for e in indicators for f in e["figures"]}
         per_run = analysis_dir / "indicators_per_run.csv"
         return {"available": True, "summary": {k: v for k, v in summary.items() if k not in ("indicators",
                                                                                                "figures")},
-                "updated_at": path.stat().st_mtime, "indicators": indicators,
-                "figures": [f for f in figures if f not in used],
-                "figure_base": self.file_url(analysis_dir / "figures"),
-                "per_run": self.file_url(per_run) if per_run.is_file() else None}
+                "updated_at": path.stat().st_mtime, "indicators": indicators, "figures": figures,
+                "per_run": self.file_url(per_run) if per_run.is_file() else None,
+                "times": self._times(per_run, pd), "parameters": self._parameters_used(),
+                "files": {k: self.file_url(out / v) for k, v in (("state", STATE_FILE),
+                                                                   ("config", "experiment_used.json"))
+                          if (out / v).is_file()}}
+
+    @staticmethod
+    def _times(per_run: Path, pd) -> dict | None:
+        """Wall time of the runs: in total and per algorithm variant (from the per-run indicators)."""
+        try:
+            df = pd.read_csv(per_run)
+        except (OSError, ValueError):
+            return None
+        if "wall_time_s" not in df or df["wall_time_s"].dropna().empty:
+            return None
+        by_unit = df.groupby("unit")["wall_time_s"].agg(["count", "mean", "min", "max", "sum"])
+        return {"total_s": float(df["wall_time_s"].sum()), "mean_s": float(df["wall_time_s"].mean()),
+                "runs": int(df["wall_time_s"].count()),
+                "units": [{"unit": str(u), **{k: float(v) for k, v in row.items()}} for u, row in by_unit.iterrows()]}
+
+    def _parameters_used(self) -> dict | None:
+        """Parameters of each algorithm variant: the setup's (and manifest defaults), or the tuned ones."""
+        setup = self.saved_setup()
+        if setup is None:
+            return None
+        try:
+            plan = make_plan(setup, self.manifest(setup.model_dump()))
+        except (ContractError, PlanError):
+            return None
+        out = self.output_dir()
+        tuning = ((read_state(out) if out else None) or {}).get("tuning") or {}
+        used = {}
+        for (algorithm, variant), values in plan.parameters.items():
+            key = f"{algorithm}/{variant}"
+            tuned = (tuning.get(key) or {}).get("parameters") or {}
+            used[key] = {"values": {**values, **tuned}, "tuned": sorted(tuned)}
+        return used
 
     def file_url(self, path: Path) -> str:
         return "/files/" + path.resolve().relative_to(self.output_dir()).as_posix()
@@ -423,8 +544,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, json.dumps(finite(data), allow_nan=False, default=str).encode("utf-8"),
                    "application/json; charset=utf-8")
 
-    def _error(self, message, status):
-        self._json({"error": message}, status)
+    def _error(self, message, status, code=None, args=None):
+        self._json({"error": message, "code": code, "args": plain(args or {})}, status)
 
     def _host_ok(self) -> bool:
         return self.headers.get("Host", "") in self.allowed_hosts
@@ -445,13 +566,16 @@ class Handler(BaseHTTPRequestHandler):
                 if kind.startswith("text/") or target.suffix in (".md", ".tex", ".csv", ".log", ".txt"):
                     kind = "text/plain; charset=utf-8"
                 return self._send(HTTPStatus.OK, target.read_bytes(), kind)
+            if path == "/api/icon":
+                target = w.icon()
+                return self._send(HTTPStatus.OK, target.read_bytes(), icon_type(target))
             routes = {"/api/project": w.project, "/api/setup": w.setup, "/api/status": w.status,
-                      "/api/analysis": w.analysis}
+                      "/api/analysis": w.analysis, "/api/meta": w.meta}
             if path not in routes:
                 return self._error("not found", HTTPStatus.NOT_FOUND)
             return self._json(routes[path]())
         except ApiError as exc:
-            return self._error(str(exc), exc.status)
+            return self._error(str(exc), exc.status, exc.code, exc.args_)
         except ValueError as exc:      # e.g. NaN in a summary, or a broken file
             return self._error(f"{type(exc).__name__}: {exc}", HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -483,14 +607,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             return self._json(routes[path]())
         except ApiError as exc:
-            return self._error(str(exc), exc.status)
+            return self._error(str(exc), exc.status, exc.code, exc.args_)
 
     def _static(self, name: str):
         target = (STATIC / name).resolve()
         if not inside(STATIC, target) or not target.is_file():
             return self._error("not found", HTTPStatus.NOT_FOUND)
-        kind = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-        if kind.startswith("text/") or kind == "application/javascript":
+        # explicit types: the registry of some Windows machines maps .js to text/plain, which browsers refuse
+        # for modules
+        kind = STATIC_TYPES.get(target.suffix) or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+        if kind.startswith("text/") or kind == "application/json":
             kind += "; charset=utf-8"
         return self._send(HTTPStatus.OK, target.read_bytes(), kind)
 
@@ -525,8 +651,9 @@ def make_server(workspace: Workspace, port: int = 8765, tries: int = 10) -> Thre
     raise OSError(f"no free port in {port}..{port + tries - 1} ({last})")
 
 
-def serve(setup_path, project_path=None, port: int = 8765, open_browser: bool = True, log=print) -> None:
-    workspace = Workspace(setup_path, project_path)
+def serve(setup_path, project_path=None, port: int = 8765, open_browser: bool = True, log=print,
+          language: str | None = None) -> None:
+    workspace = Workspace(setup_path, project_path, language)
     server = make_server(workspace, port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     log(f"paretolab web interface for {workspace.setup_path}")

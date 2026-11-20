@@ -6,6 +6,7 @@ from pydantic import Field, model_validator
 
 from paretolab.contract._base import SCHEMA_VERSION, Strict, duplicates
 from paretolab.contract.manifest import Instance, Manifest, ParamValue
+from paretolab.messages import note, under
 
 MULTIOBJECTIVE_INDICATORS = ("hv", "igd_plus", "igd", "epsilon_additive")
 SINGLE_OBJECTIVE_INDICATORS = ("best", "gap")
@@ -27,7 +28,7 @@ class Budget(Strict):
     @model_validator(mode="after")
     def _check(self):
         if self.max_evaluations is None and self.time_limit_s is None:
-            raise ValueError("budget needs 'max_evaluations', 'time_limit_s' or both")
+            raise ValueError(note("budget_empty", "budget needs 'max_evaluations', 'time_limit_s' or both"))
         return self
 
 
@@ -94,13 +95,15 @@ class Setup(Strict):
     def _check(self):
         if isinstance(self.seeds, list):
             if not self.seeds:
-                raise ValueError("seeds: the list is empty")
+                raise ValueError(note("seeds_empty", "seeds: the list is empty"))
             if duplicates(self.seeds):
-                raise ValueError(f"seeds: repeated values {duplicates(self.seeds)}")
+                raise ValueError(note("repeated_values", "{field}: repeated values {values}", field="seeds",
+                                      values=duplicates(self.seeds)))
         for label, values in (("instances", self.instances), ("algorithms", self.algorithms),
                               ("indicators", self.indicators)):
             if values is not None and duplicates(values):
-                raise ValueError(f"{label}: repeated values {duplicates(values)}")
+                raise ValueError(note("repeated_values", "{field}: repeated values {values}", field=label,
+                                      values=duplicates(values)))
         return self
 
     @property
@@ -127,7 +130,11 @@ class Plan:
 
 
 class PlanError(ValueError):
-    pass
+    """Every problem found when resolving a setup against a manifest; ``problems`` keeps them one by one."""
+
+    def __init__(self, problems: list):
+        super().__init__("\n".join(problems))
+        self.problems = list(problems)
 
 
 def make_plan(setup: Setup, manifest: Manifest) -> Plan:
@@ -140,7 +147,8 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
             return list(manifest.instances)
         missing = [n for n in names if n not in known]
         if missing:
-            problems.append(f"{label}: unknown instances {missing}; the project has {sorted(known)}")
+            problems.append(note("unknown_instances", "{field}: unknown instances {missing}; the project has {known}",
+                                 field=label, missing=missing, known=sorted(known)))
         return [manifest.instance(n) for n in names if n in known]
 
     instances = pick_instances(setup.instances, "instances")
@@ -155,11 +163,12 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
         name, _, variant = entry.partition("/")
         algorithm = next((a for a in manifest.algorithms if a.name == name), None)
         if algorithm is None:
-            problems.append(f"algorithms: unknown algorithm '{name}'; the project has "
-                            f"{[a.name for a in manifest.algorithms]}")
+            problems.append(note("unknown_algorithm", "algorithms: unknown algorithm '{name}'; the project has {known}",
+                                 name=name, known=[a.name for a in manifest.algorithms]))
             continue
         if variant and variant not in algorithm.variants:
-            problems.append(f"algorithms: '{name}' has no variant '{variant}'; it has {algorithm.variants}")
+            problems.append(note("unknown_variant", "algorithms: '{name}' has no variant '{variant}'; it has {known}",
+                                 name=name, variant=variant, known=algorithm.variants))
             continue
         for v in [variant] if variant else algorithm.variants:
             if (name, v) not in units:
@@ -174,15 +183,20 @@ def make_plan(setup: Setup, manifest: Manifest) -> Plan:
     wrong = [i for i in indicators if i not in allowed]
     if wrong:
         kind = "multi-objective" if manifest.is_multiobjective else "single-objective"
-        problems.append(f"indicators: {wrong} are not available for a {kind} project; choose from {list(allowed)}")
+        problems.append(note("indicators_unavailable",
+                             "indicators: {wrong} are not available for a {kind} project; choose from {allowed}",
+                             wrong=wrong, kind=kind, allowed=list(allowed),
+                             multiobjective=manifest.is_multiobjective))
     if "gap" in indicators and not manifest.is_multiobjective:
         no_optimum = [i.name for i in instances if i.optimum is None]
         if no_optimum:
-            problems.append(f"indicators: 'gap' needs a known optimum, missing for instances {no_optimum}")
+            problems.append(note("gap_needs_optimum",
+                                 "indicators: 'gap' needs a known optimum, missing for instances {missing}",
+                                 missing=no_optimum))
 
     parameters = _resolve_parameters(setup, manifest, units, problems)
     if problems:
-        raise PlanError("\n".join(problems))
+        raise PlanError(problems)
     return Plan(instances=instances, units=units, seeds=setup.seed_list, indicators=list(indicators),
                 tuning_instances=tuning_instances, parameters=parameters)
 
@@ -192,17 +206,22 @@ def _check_bounds(setup: Setup, manifest: Manifest, tuning_instances, problems) 
     if not bounds:
         return
     if not manifest.is_multiobjective:
-        problems.append("tuning.bounds: only used by multi-objective projects")
+        problems.append(note("bounds_single_objective", "tuning.bounds: only used by multi-objective projects"))
         return
     names = {i.name for i in tuning_instances}
     for instance, pairs in bounds.items():
         if instance not in names:
-            problems.append(f"tuning.bounds: '{instance}' is not a training instance; they are {sorted(names)}")
+            problems.append(note("bounds_not_training",
+                                 "tuning.bounds: '{instance}' is not a training instance; they are {known}",
+                                 instance=instance, known=sorted(names)))
         elif len(pairs) != len(manifest.objectives):
-            problems.append(f"tuning.bounds.{instance}: needs one [min, max] per objective "
-                            f"({len(manifest.objectives)}), got {len(pairs)}")
+            problems.append(note("bounds_count",
+                                 "tuning.bounds.{instance}: needs one [min, max] per objective ({expected}), got {got}",
+                                 instance=instance, expected=len(manifest.objectives), got=len(pairs)))
         elif any(not low <= high for low, high in pairs):
-            problems.append(f"tuning.bounds.{instance}: every pair must be [min, max] with min <= max")
+            problems.append(note("bounds_order",
+                                 "tuning.bounds.{instance}: every pair must be [min, max] with min <= max",
+                                 instance=instance))
 
 
 def tuned_parameter_names(setup: Setup, manifest: Manifest, algorithm: str, variant: str) -> list[str]:
@@ -216,16 +235,20 @@ def _resolve_parameters(setup: Setup, manifest: Manifest, units, problems) -> di
         name, _, variant = key.partition("/")
         algorithm = next((a for a in manifest.algorithms if a.name == name), None)
         if algorithm is None or (variant and variant not in algorithm.variants):
-            problems.append(f"parameters: '{key}' is not an algorithm (or algorithm/variant) of the project")
+            problems.append(note("param_unknown_key",
+                                 "parameters: '{key}' is not an algorithm (or algorithm/variant) of the project",
+                                 key=key))
             continue
         space = {p.name: p for p in algorithm.parameters}
         for pname, value in values.items():
             if pname not in space:
-                problems.append(f"parameters: '{key}' has no parameter '{pname}'; it has {sorted(space)}")
+                problems.append(note("param_unknown_name",
+                                     "parameters: '{key}' has no parameter '{name}'; it has {known}",
+                                     key=key, name=pname, known=sorted(space)))
                 continue
             error = space[pname].value_error(value)
             if error:
-                problems.append(f"parameters: {key}.{pname}: {error}")
+                problems.append(under(f"parameters: {key}.{pname}", error))
     resolved = {}
     for name, variant in units:
         algorithm = manifest.algorithm(name)

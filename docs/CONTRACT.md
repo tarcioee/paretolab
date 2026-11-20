@@ -50,6 +50,35 @@ param_format: "--{name}={value}"  # how each parameter becomes arguments; e.g. "
 | `{output_dir}`, `{result_file}` | where to write. **At least one is required.** |
 | `{params}` | expands to the parameter arguments. It must be a token of its own. |
 
+### Presentation in the web interface (optional)
+
+These fields change nothing in how runs are made or analysed; they only change how `paretolab ui` shows the project. A text may be one string or one string per language code (`en`, `pt`, ...); the interface picks the reader's language, then its base language, then English.
+
+```yaml
+description: {en: Tours of TSPLIB instances, pt: Rotas de instâncias da TSPLIB}   # the subtitle by default
+objectives:
+  - {name: length, sense: min, description: tour length}
+instances:
+  - {name: burma14, optimum: 3323, description: 14 cities in Burma}
+algorithms:
+  - name: ils
+    description: {en: Iterated local search, pt: Busca local iterada}
+    variants: [first, best]
+    variant_descriptions: {first: first improvement, best: best improvement}
+    parameters:
+      - {name: k, type: integer, range: [1, 10], default: 3, description: double-bridge kicks per perturbation}
+ui:
+  title: {en: Routing experiments, pt: Experimentos de roteamento}   # default: name
+  subtitle: TSPLIB, single objective                                 # default: description
+  accent: "#2f7fc1"            # main colour, #rrggbb
+  icon: logo.svg               # image next to the title, relative to the manifest (svg, png, jpg, gif, webp)
+  terms:                       # the project's own words, shown everywhere instead of the defaults
+    variant: {en: strategy, pt: estratégia}
+    variants: {en: strategies, pt: estratégias}   # optional: the plural is derived when missing
+```
+
+`terms` may rename `algorithm`, `variant`, `instance`, `objective`, `parameter`, `seed` and `run`, and their plurals (`algorithms`, ...).
+
 ## 2. Experiment setup (`experiment.yaml`): what to run
 
 ```yaml

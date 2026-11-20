@@ -202,3 +202,28 @@ def test_load_output_checks_dimension(tmp_path, tsp):
     (tmp_path / "r.json").write_text(json.dumps({"front": [[1, 2]]}), encoding="utf-8")
     with pytest.raises(ContractError, match="1 objectives"):
         load_output(tmp_path / "r.json", Manifest.model_validate(tsp))
+
+
+def test_ui_block_and_descriptions(tsp):
+    tsp["ui"] = {"title": {"en": "Tours", "pt": "Rotas"}, "accent": "#2f7fc1", "icon": "logo.svg",
+                 "terms": {"variant": {"en": "Strategy", "pt": "Estratégia"}, "instance": "City set"}}
+    tsp["algorithms"][0]["description"] = "iterated local search"
+    tsp["algorithms"][0]["variant_descriptions"] = {"default": {"pt": "uma variante"}}
+    manifest = Manifest.model_validate(tsp)
+    assert manifest.ui.terms["instance"] == "City set" and manifest.algorithms[0].description
+    for bad in ({"accent": "blue"}, {"icon": "logo.exe"}, {"terms": {"color": "x"}}):
+        with pytest.raises(ValueError):
+            Manifest.model_validate({**tsp, "ui": bad})
+    with pytest.raises(ValueError, match="unknown variants"):
+        Manifest.model_validate({**tsp, "algorithms": [{**tsp["algorithms"][0], "variant_descriptions": {"zz": "?"}}]})
+
+
+def test_plan_problems_carry_codes(tsp):
+    manifest = Manifest.model_validate(tsp)
+    setup = Setup.model_validate({**setup_dict(), "instances": ["nowhere"], "algorithms": ["ils/zz"]})
+    with pytest.raises(PlanError) as caught:
+        make_plan(setup, manifest)
+    codes = [p.code for p in caught.value.problems]
+    assert codes == ["unknown_instances", "unknown_variant"]
+    assert caught.value.problems[0].args["missing"] == ["nowhere"]
+    assert "unknown instances ['nowhere']" in str(caught.value)

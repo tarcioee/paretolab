@@ -33,6 +33,7 @@ from paretolab.execution.state import (
     read_state,
     write_json_atomic,
 )
+from paretolab.messages import info, note
 
 EXIT_OK, EXIT_ERROR, EXIT_SETUP, EXIT_DISK = 0, 1, 2, 3
 #: Set by a launcher (the web interface) to the time it started `paretolab run`; see Runner.run.
@@ -68,6 +69,7 @@ class Runner:
     def __init__(self, setup_path, jobs: int | None = None, retry_failed: bool = False, log=print,
                  parameters_for=None):
         self.setup, self.manifest, self.plan = load_experiment(setup_path)
+        self.elapsed_before, self.started = 0.0, time.monotonic()
         base = Path(setup_path).resolve().parent
         self.output_dir = base / self.setup.output_dir
         self.runs_root = self.output_dir / RUNS
@@ -95,7 +97,10 @@ class Runner:
             f.write(f"{now_iso()} {text}\n")
 
     def save_state(self, **fields) -> None:
-        self.state.update(fields, updated_at=now_iso(), running=[r["spec"].id for r in self.running.values()])
+        if "message" in fields:
+            fields["message_info"] = info(fields["message"]) if fields["message"] else None
+        self.state.update(fields, updated_at=now_iso(), running=[r["spec"].id for r in self.running.values()],
+                          elapsed_s=round(self.elapsed_before + time.monotonic() - self.started, 1))
         if self.durations:
             mean = sum(self.durations) / len(self.durations)
             left = self.state["total"] - self.state["finished"]
@@ -173,6 +178,10 @@ class Runner:
 
         _, done, failed = self.pending_runs()
         total = self.plan.total_runs
+        # time already spent by an interrupted or paused run of this experiment (a finished one starts over)
+        self.elapsed_before = (float(previous.get("elapsed_s") or 0)
+                               if previous.get("phase") not in (None, "done") else 0.0)
+        self.started = time.monotonic()
         self.state = {"paretolab_version": __version__, "phase": "tuning" if self.setup.tuning.enabled else "running",
                       "pid": os.getpid(), "started_at": now_iso(), "total": total, "finished": done,
                       "failed": failed, "jobs": self.jobs, "message": ""}
@@ -196,25 +205,33 @@ class Runner:
             return EXIT_ERROR
         except (Paused, KeyboardInterrupt) as exc:
             self._stop_all()
-            how = "Ctrl+C" if isinstance(exc, KeyboardInterrupt) else "request (PAUSE file)"
             where = (" during tuning" if self.state.get("phase") == "tuning"
                      else f": {self.state['finished']} of {total} runs finished")
-            self.save_state(phase="paused", message=f"paused by {how}{where}")
+            if isinstance(exc, KeyboardInterrupt):
+                message = (note("paused_ctrl_c_tuning", "paused by Ctrl+C during tuning") if where.startswith(" during")
+                           else note("paused_ctrl_c", "paused by Ctrl+C: {finished} of {total} runs finished",
+                                     finished=self.state["finished"], total=total))
+            else:
+                message = (note("paused_tuning", "paused by request (PAUSE file) during tuning")
+                           if where.startswith(" during")
+                           else note("paused", "paused by request (PAUSE file): {finished} of {total} runs finished",
+                                     finished=self.state["finished"], total=total))
+            self.save_state(phase="paused", message=message)
             self.say(f"paused{where}; run again to continue")
             return EXIT_OK
         except DiskFull as exc:
             self._stop_all()
-            self.save_state(phase="paused", message=str(exc))
+            self.save_state(phase="paused", message=exc.args[0])
             self.say(f"paused: {exc}")
             return EXIT_DISK
         except BaseException:
             self._stop_all()
-            self.save_state(phase="failed", message="unexpected error; see paretolab.log")
+            self.save_state(phase="failed", message=note("unexpected_error", "unexpected error; see paretolab.log"))
             raise
         finally:
             if self.pause_file.exists():
                 self.pause_file.unlink()
-        self.save_state(phase="done", message="all runs finished")
+        self.save_state(phase="done", message=note("all_done", "all runs finished"))
         self.say(f"done: {self.state['finished']} runs, {self.state['failed']} failed")
         return EXIT_OK
 
@@ -245,7 +262,8 @@ class Runner:
     def _check_disk(self) -> None:
         free = free_disk_gb(self.output_dir)
         if free < self.setup.min_free_disk_gb:
-            raise DiskFull(f"only {free:.2f} GB free on the output disk (minimum {self.setup.min_free_disk_gb} GB)")
+            raise DiskFull(note("disk_full", "only {free} GB free on the output disk (minimum {minimum} GB)",
+                                free=f"{free:.2f}", minimum=self.setup.min_free_disk_gb))
 
     # ------------------------------------------------------------------ one run
 

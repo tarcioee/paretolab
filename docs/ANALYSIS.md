@@ -59,6 +59,6 @@ The tests are fixed by the setup. paretolab never picks them from the data.
 | `figures/attainment_<instance>.png` | median (50%) empirical attainment surface per variant. Biobjective only. |
 | `figures/ecdf_<indicator>_<instance>.png` | ECDF of the final value. Single-objective only. |
 | `figures/convergence_<instance>.png` | median best-so-far value against evaluations. Single-objective runs with a `convergence_trace` only. |
-| `summary.json` | file paths, mean ranks, Friedman p-values, per-instance reference data, warnings |
+| `summary.json` | file paths, mean ranks, Friedman p-values, per-instance reference data, warnings; each figure as `{kind, indicator, instance, file}`, and each warning also as `{code, args, prefix, text}` in `warnings_info` (so an interface can translate it) |
 
 Per-instance figures are made for the first 12 instances.

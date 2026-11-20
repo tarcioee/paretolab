@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from paretolab.contract._base import SCHEMA_VERSION, Name, Sense, Strict, duplicates
+from paretolab.messages import Note, note
 
 #: Placeholders accepted in ``command``. ``{params}`` must be a token of its own: it expands to several arguments.
 PLACEHOLDERS = frozenset({"python", "executable", "instance", "instance_path", "algorithm", "variant", "seed",
@@ -23,10 +24,19 @@ def command_tokens(command: str | list) -> list:
     return list(command) if isinstance(command, list) else shlex.split(command)
 
 
+#: Text shown to people: one string, or one per language code, e.g. ``{en: Strategy, pt: Estratégia}``.
+Text = str | dict[str, str]
+#: Words a project may rename in the web interface (singular and plural).
+TERMS = ("algorithm", "algorithms", "variant", "variants", "instance", "instances", "objective", "objectives",
+         "parameter", "parameters", "seed", "seeds", "run", "runs")
+ICON_SUFFIXES = (".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
 class Objective(Strict):
     name: Name
     sense: Sense
     unit: str | None = None
+    description: Text | None = None
 
 
 class Instance(Strict):
@@ -34,6 +44,7 @@ class Instance(Strict):
     path: str | None = None
     #: Known optimal objective value (single-objective projects only); enables the ``gap`` indicator.
     optimum: float | None = None
+    description: Text | None = None
 
 
 class Parameter(Strict):
@@ -47,6 +58,7 @@ class Parameter(Strict):
     log: bool = False
     #: Condition passed to the tuner as is (irace syntax), e.g. ``"op == 'swap'"``.
     condition: str | None = None
+    description: Text | None = None
 
     @model_validator(mode="after")
     def _check(self):
@@ -76,16 +88,18 @@ class Parameter(Strict):
                 raise ValueError(f"parameter '{self.name}': default {error}")
         return self
 
-    def value_error(self, value) -> str | None:
+    def value_error(self, value) -> Note | None:
         """Why ``value`` is not valid for this parameter, or None if it is."""
         if self.type in ("real", "integer"):
             low, high = self.range
             if isinstance(value, (str, bool)) or not low <= value <= high:
-                return f"{value!r} is outside {list(self.range)}"
+                return note("value_outside", "{value} is outside [{low}, {high}]", value=repr(value), low=low,
+                            high=high)
             if self.type == "integer" and value != int(value):
-                return f"{value!r} must be an integer"
+                return note("value_not_integer", "{value} must be an integer", value=repr(value))
             return None
-        return None if value in self.values else f"{value!r} is not one of the values {self.values}"
+        return None if value in self.values else note("value_not_allowed", "{value} is not one of the values {values}",
+                                                      value=repr(value), values=self.values)
 
 
 class Algorithm(Strict):
@@ -93,9 +107,15 @@ class Algorithm(Strict):
     #: Variants share the algorithm's parameter space (e.g. strategies); each one is tuned and compared on its own.
     variants: list[Name] = Field(default_factory=lambda: ["default"], min_length=1)
     parameters: list[Parameter] = Field(default_factory=list)
+    description: Text | None = None
+    #: Optional text per variant, shown in the web interface.
+    variant_descriptions: dict[str, Text] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check(self):
+        unknown = sorted(set(self.variant_descriptions) - set(self.variants))
+        if unknown:
+            raise ValueError(f"algorithm '{self.name}': variant_descriptions of unknown variants {unknown}")
         if duplicates(self.variants):
             raise ValueError(f"algorithm '{self.name}': repeated variants {duplicates(self.variants)}")
         repeated = duplicates(p.name for p in self.parameters)
@@ -104,10 +124,33 @@ class Algorithm(Strict):
         return self
 
 
+class Ui(Strict):
+    """How the web interface presents the project. Everything is optional."""
+
+    #: Shown in the header (default: the project's name) and under it (default: its description).
+    title: Text | None = None
+    subtitle: Text | None = None
+    #: Main colour of the interface, as ``#rrggbb``.
+    accent: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    #: Image shown in the header, relative to the manifest (svg, png, jpg, gif or webp).
+    icon: str | None = None
+    #: What the project calls each concept, e.g. ``{variant: {en: Strategy, pt: Estratégia}}``.
+    terms: dict[str, Text] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check(self):
+        unknown = sorted(set(self.terms) - set(TERMS))
+        if unknown:
+            raise ValueError(f"ui.terms: unknown terms {unknown}; allowed: {list(TERMS)}")
+        if self.icon is not None and not self.icon.lower().endswith(ICON_SUFFIXES):
+            raise ValueError(f"ui.icon must be one of {list(ICON_SUFFIXES)}")
+        return self
+
+
 class Manifest(Strict):
     schema_version: Literal[1] = SCHEMA_VERSION
     name: Name
-    description: str = ""
+    description: Text = ""
     objectives: list[Objective] = Field(min_length=1)
     instances: list[Instance] = Field(min_length=1)
     algorithms: list[Algorithm] = Field(min_length=1)
@@ -117,6 +160,8 @@ class Manifest(Strict):
     command: list[str] | str
     #: How each hyperparameter is passed; split into tokens the same way, e.g. ``"--param {name}={value}"``.
     param_format: str = "--{name}={value}"
+    #: Presentation in the web interface (title, colour, icon, the project's own words).
+    ui: Ui = Field(default_factory=Ui)
 
     @field_validator("instances", mode="before")
     @classmethod

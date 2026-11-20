@@ -75,7 +75,10 @@ def test_pages_project_and_setup(tmp_path, ui):
     c = ui(make_experiment(tmp_path, ["ok"], seeds=2))
     code, page = c.get("/")
     assert code == 200 and b"<title>paretolab</title>" in page
-    assert c.get("/static/app.js")[0] == 200
+    assert c.get("/static/js/main.js")[0] == 200
+    code, meta = c.get("/api/meta")
+    assert code == 200 and meta["languages"]["en"] == "English" and meta["cpu_count"] >= 1
+    assert c.get("/api/icon")[0] == 404                 # the project has no ui.icon
     code, project = c.get("/api/project")
     assert code == 200 and project["manifest"]["name"] == "fake" and project["multiobjective"]
     assert project["indicators"][:2] == ["hv", "igd_plus"]
@@ -103,9 +106,15 @@ def test_check_and_save(tmp_path, ui):
     assert code == 200 and not check["ok"] and check["errors"][0].startswith("budget: budget needs")
     check = c.post("/api/check", {"setup": {"output_dir": "out", "seeds": [1, 1], "budget": {"max_evaluations": 5}}})[1]
     assert check["errors"] == ["(top level): seeds: repeated values [1]"]
+    assert check["issues"][0]["code"] == "repeated_values" and check["issues"][0]["args"] == {"field": "seeds",
+                                                                                              "values": [1]}
+    check = c.post("/api/check", {"setup": {"output_dir": "out", "seeds": [1], "budget": {"max_evaluations": 0}}})[1]
+    assert check["issues"][0]["code"] == "pydantic.greater_than" and check["issues"][0]["args"] == {"gt": 0}
+    assert check["issues"][0]["prefix"] == "budget.max_evaluations"
     code, check = c.post("/api/check", {"setup": {"output_dir": "out", "seeds": [1], "budget": {"max_evaluations": 5},
                                                   "algorithms": ["alg/zz"]}})
     assert not check["ok"] and "no variant 'zz'" in check["errors"][0]
+    assert check["issues"][0]["code"] == "unknown_variant" and check["issues"][0]["args"]["variant"] == "zz"
 
     code, answer = c.post("/api/save", {"setup": {"output_dir": "out", "seeds": [1]}})
     assert code == 422 and "not saved" in answer["error"]
@@ -152,8 +161,12 @@ def test_run_follow_and_analyse_from_the_interface(tmp_path, ui):
     assert hv["higher_is_better"] and hv["table"]["units"] == ["alg/a", "alg/b"]
     assert hv["statistics"]["indicator"] == "hv" and set(hv["files"]) >= {"csv", "md", "tex", "statistics"}
     assert any(w.startswith("4 runs ended with status 'error'") for w in analysis["summary"]["warnings"])
-    figure = (hv["figures"] + analysis["figures"])[0]
-    code, png = c.get(f"{analysis['figure_base']}/{figure}")
+    assert {(f["kind"], f["indicator"]) for f in analysis["figures"]} >= {("box", "hv"), ("attainment", None)}
+    warning = next(w for w in analysis["summary"]["warnings_info"] if w["code"] == "runs_failed")
+    assert warning["args"] == {"failed": 4}
+    assert analysis["times"]["runs"] == 8 and {u["unit"] for u in analysis["times"]["units"]} == {"alg/a", "alg/b"}
+    assert set(analysis["parameters"]) == {"alg/a", "alg/b"}
+    code, png = c.get(analysis["figures"][0]["url"])
     assert code == 200 and png.startswith(b"\x89PNG")
     code, md = c.get(hv["files"]["md"])
     assert code == 200 and b"Hypervolume" in md
@@ -214,3 +227,39 @@ def test_a_pause_requested_while_the_run_starts_is_kept(tmp_path, monkeypatch):
     monkeypatch.setenv(LAUNCHED_AT_ENV, repr(time.time() + 5))      # a request left over from before
     assert Runner(setup, log=lambda *_: None).run() == 0
     assert read_state(tmp_path / "out")["phase"] == "done"
+
+
+def test_translations_cover_every_text():
+    """Every t("key") of the page exists in English, and every language has the same keys and placeholders."""
+    import re
+    from pathlib import Path
+
+    static = Path(__file__).parents[1] / "src" / "paretolab" / "web" / "static"
+    languages = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in (static / "i18n").glob("*.json")}
+    assert set(languages) == {"en", "pt-BR"}
+    english = languages["en"]
+    used = set()
+    for script in (static / "js").glob("*.js"):
+        used |= set(re.findall(r'\bt\("([\w.]+)"', script.read_text(encoding="utf-8")))
+    assert used and not used - set(english)
+
+    def fields(value):
+        texts = value.values() if isinstance(value, dict) else [value]
+        return {f for text in texts for f in re.findall(r"\{(\w+)\}", text)}
+
+    for name, words in languages.items():
+        assert set(words) == set(english), name
+        for key, value in words.items():
+            assert fields(value) <= fields(english[key]) | {"n"}, (name, key)
+
+
+def test_project_icon_is_served(tmp_path, ui):
+    setup = make_experiment(tmp_path, ["ok"])
+    project = yaml.safe_load((tmp_path / "project.yaml").read_text(encoding="utf-8"))
+    project["ui"] = {"icon": "logo.svg", "terms": {"variant": {"en": "strategy", "pt": "estratégia"}}}
+    (tmp_path / "project.yaml").write_text(yaml.safe_dump(project, allow_unicode=True), encoding="utf-8")
+    (tmp_path / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"/>', encoding="utf-8")
+    c = ui(setup)
+    assert c.get("/api/project")[1]["icon"] == "/api/icon"
+    code, body = c.call("GET", "/api/icon")
+    assert code == 200 and body.startswith(b"<svg")

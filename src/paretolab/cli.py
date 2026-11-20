@@ -172,6 +172,8 @@ def ui(
                                         help="manifest of a new setup (default: project.yaml next to it)"),
     port: int = typer.Option(8765, "--port", min=0, max=65535, help="port on 127.0.0.1 (the next free one is used)"),
     no_browser: bool = typer.Option(False, "--no-browser", help="do not open the browser"),
+    lang: str | None = typer.Option(None, "--lang", help="language of the interface: en or pt-BR (default: en, "
+                                                          "or the last one chosen in the browser)"),
 ) -> None:
     """Open the local web interface: edit the setup, run, pause, resume, follow the progress and read the analysis."""
     from paretolab.web.server import serve
@@ -180,7 +182,7 @@ def ui(
         typer.echo(f"ERROR: {project} does not exist", err=True)
         raise typer.Exit(2)
     try:
-        serve(setup, project, port=port, open_browser=not no_browser, log=typer.echo)
+        serve(setup, project, port=port, open_browser=not no_browser, log=typer.echo, language=lang)
     except OSError as exc:
         typer.echo(f"ERROR: {exc}", err=True)
         raise typer.Exit(2) from None

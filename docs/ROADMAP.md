@@ -55,6 +55,7 @@ Infeasible solutions are not part of the front. A per-solution `constraints` fie
    - `paretolab ui`: a local page whose setup form is built from the manifest, with live validation, start, pause and resume, progress per instance and variant, tuning status, logs, and the analysis (tables, tests, figures).
    - Standard library only (`http.server`, plain JavaScript); listens on 127.0.0.1 and refuses other hosts and origins.
    - Two runs on the same output folder are now refused, and a pause requested while a run is starting is kept.
+   - Second version: three steps (setup, run, analysis), English and Portuguese with a language selector, the project's own title, colour, icon and words (`ui` in the manifest), descriptions as help, charts chosen by kind, indicator and instance with the matching test, and messages coded so they can be translated.
 7. **Validation.** *(done; see [examples/](../examples))*
    - Examples, each run end to end by `tests/test_examples.py`:
      - TSP (Python, single-objective): burma14 and gr17 from TSPLIB, whose optima (3323, 2085) are checked by Held-Karp;
