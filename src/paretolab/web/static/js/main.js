@@ -16,11 +16,6 @@ let autoShown = false;
 
 // ------------------------------------------------------------------ header
 
-const GLYPH = () => h("svg", { viewBox: "0 0 40 40", class: "brand-icon", "aria-hidden": "true" },
-  h("path", { d: "M7 6 V33 H35", fill: "none", stroke: "currentColor", "stroke-width": "2.2", "stroke-linecap": "round", opacity: ".75" }),
-  h("path", { d: "M11 10 Q14 27 32 29", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-dasharray": "2 3", opacity: ".6" }),
-  [[11, 11], [14, 20], [19, 25], [25, 27.5], [31, 28.6]].map(([x, y]) => h("circle", { cx: x, cy: y, r: "2.6", fill: "currentColor" })));
-
 let headerKey = "";
 function renderHeader(force = false) {
   const key = JSON.stringify([S.step, document.documentElement.lang, phaseLabel(), !!S.status, S.project?.icon]);
@@ -31,7 +26,7 @@ function renderHeader(force = false) {
   const title = text(ui.title) || m?.name || "paretolab";
   const subtitle = text(ui.subtitle) || text(m?.description) || t("app.tagline");
   document.title = m ? `${title} · paretolab` : "paretolab";
-  const icon = S.project?.icon ? h("img", { src: S.project.icon, alt: "", class: "brand-icon" }) : GLYPH();
+  const icon = S.project?.icon ? h("img", { src: S.project.icon, alt: "", class: "brand-icon" }) : null;
   const p = phaseLabel();
   const languages = S.meta?.languages ?? { en: "English" };
   fill($("#header"), h("div", { class: "header-inner" },

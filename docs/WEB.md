@@ -17,12 +17,12 @@ Closing the interface (Ctrl+C in its terminal) does not stop an experiment. An e
 
 ## Three steps
 
-The header shows the project (title, subtitle, icon) and three steps. The interface opens on the step that matches the experiment: setup when nothing ran yet, run while it runs, analysis when it is finished.
+The header shows the project (title, subtitle, and an icon if the project gives one) and three steps. The interface opens on the step that matches the experiment: setup when nothing ran yet, run while it runs, analysis when it is finished.
 
 | Step | What it does |
 |---|---|
 | **1 · Setup** | A form built from the project manifest. Shortcuts fill it in ("complete", "quick test": one instance, one seed, a tenth of the budget, no tuning; "saved setup"). Then: output folder; what to run (tuning on or off, a matrix of algorithms × variants when they share their variants, instances); size (evaluations, seeds, time limit in s, min or h); computer resources (parallel runs, kill grace, free disk); parameters; tuning; and, folded, the analysis settings and the YAML that will be saved. A bar at the bottom shows how many runs the setup makes and every problem found by the server, which validates with the same code as `paretolab validate`. "Run" asks for confirmation, saves and starts. |
-| **2 · Run** | *Progress*: pause, resume or run again; a picture of a Pareto front forming as the runs finish; a progress bar; finished runs, failures, processes in use, elapsed time and the estimated time left; the tuning of each variant. *Instances*: every instance with its own progress, and a table of finished / planned runs per variant and instance. *Details*: the setup in use, the folders, the logs and the project (objectives, instances, algorithms, command). |
+| **2 · Run** | *Progress*: pause, resume or run again; a progress bar; finished runs, failures, processes in use, elapsed time and the estimated time left; the tuning of each variant. *Instances*: every instance with its own progress, and a table of finished / planned runs per variant and instance. *Details*: the setup in use, the folders, the logs and the project (objectives, instances, algorithms, command). |
 | **3 · Analysis** | *Charts*: choose the chart (critical difference, box plot, ECDF, attainment, convergence), the indicator and the instance; under it, the matching statistical test (Friedman, Nemenyi, mean ranks, Wilcoxon-Holm). *Tables*: mean (standard deviation) per instance of each indicator, with CSV, Markdown and LaTeX files. *Experiment information*: parameters used (the tuned ones marked), times per variant, metadata and files, warnings. "Analyse now" analyses the runs finished so far. |
 
 ### Parameters in the form

@@ -8,52 +8,6 @@ let view = store("paretolab.run.view") || "progress";
 let logChoice = null;
 let retryFailed = false;
 
-// ------------------------------------------------------------------ the scene: a Pareto front taking shape
-
-const DOTS = 46;
-let scene = null;
-
-function seeded(seed) {
-  let x = seed;
-  return () => { x = (x * 1664525 + 1013904223) % 4294967296; return x / 4294967296; };
-}
-
-function buildScene() {
-  const random = seeded(7);
-  const W = 600, H = 120;
-  // objective 1 to the right, objective 2 up: a convex front from the top left to the bottom right, and the
-  // dominated points above and to its right, moving onto it as the runs finish
-  const front = u => [40 + u * 520, 106 - 88 * (1 - Math.sqrt(u))];
-  const dots = Array.from({ length: DOTS }, (_, i) => {
-    const u = (i + 0.5) / DOTS;
-    const [fx, fy] = front(u);
-    return { fx, fy, sx: Math.min(588, fx + 20 + random() * 140), sy: Math.max(8, fy - 18 - random() * 70), delay: random() * 4 };
-  });
-  const path = Array.from({ length: 41 }, (_, i) => front(i / 40)).map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const svg = h("svg", { viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "xMidYMid meet", class: "scene-svg", "aria-hidden": "true" },
-    h("path", { d: path, class: "scene-front" }),
-    dots.map(d => h("circle", { r: "3.2", class: "scene-dot", style: { animationDelay: `-${d.delay}s` } })));
-  scene = { svg, dots, circles: [...svg.querySelectorAll("circle")], last: -1 };
-  return h("div", { class: "scene", id: "scene" }, svg);
-}
-
-function moveScene(fraction) {
-  if (!scene) return;
-  const f = Math.max(0, Math.min(1, fraction));
-  if (Math.abs(f - scene.last) < 0.002) return;
-  scene.last = f;
-  const ease = 1 - (1 - f) ** 2;
-  scene.dots.forEach((d, i) => {
-    const x = d.sx + (d.fx - d.sx) * ease, y = d.sy + (d.fy - d.sy) * ease;
-    const c = scene.circles[i];
-    c.setAttribute("cx", x.toFixed(1));
-    c.setAttribute("cy", y.toFixed(1));
-    c.style.cx = `${x.toFixed(1)}px`;        // as CSS too, so the move is animated
-    c.style.cy = `${y.toFixed(1)}px`;
-    c.classList.toggle("on-front", ease > 0.97);
-  });
-}
-
 // ------------------------------------------------------------------ actions
 
 export async function startRun() {
@@ -119,7 +73,6 @@ function statusCard() {
           onchange: e => { retryFailed = e.target.checked; } }), t("run.retry")) : null,
         !st?.alive ? h("button", { type: "button", class: "btn btn-prim", disabled: !canStart, onclick: startRun,
           title: p === "done" ? t("run.again_help") : "" }, startLabel) : null)),
-    buildSceneOnce(st?.alive && !st.pause_requested),
     progressBar(fraction, `${Math.floor(100 * fraction)}%` + (total ? `  (${num(finished)}/${num(total)})` : "")),
     p === "done" && analyzing() ? alertBox(t("run.analysing_note"), "info") : null,
     h("div", { class: "counters" },
@@ -130,12 +83,6 @@ function statusCard() {
       counter(left, t("run.left"), { highlight: true })),
     help(t("run.estimate_note") + (state?.mean_run_s ? " " + t("run.mean_run", { time: duration(state.mean_run_s) }) : "")),
     ["paused", "interrupted", "failed"].includes(p) ? help(t("run.resume_note")) : null);
-}
-
-function buildSceneOnce(moving) {
-  const el = scene ? scene.svg.parentNode : buildScene();
-  el.classList.toggle("still", !moving);
-  return el;
 }
 
 function tuningCard() {
@@ -273,8 +220,6 @@ export function renderRun(force = false) {
   const content = view === "instances" ? instancesView() : view === "details" ? detailsView() : progressView();
   fill(root, tabs([["progress", t("run.tab_progress")], ["instances", cap(term("instances"))], ["details", t("run.tab_details")]],
     view, v => { view = v; store("paretolab.run.view", v); renderRun(true); }), h("div", { class: "panel" }, content));
-  const st = S.status.state;
-  moveScene(phase() === "done" ? 1 : st?.total ? st.finished / st.total : 0);
   const log = $("#log");
   if (log && atEnd) log.scrollTop = log.scrollHeight;
   window.scrollTo(0, scroll);
