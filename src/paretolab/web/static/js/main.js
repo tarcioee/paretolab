@@ -12,6 +12,7 @@ let pollTimer;
 let wasAnalysing = false;
 let userPicked = false;
 let lastBusy = "";
+let autoShown = false;
 
 // ------------------------------------------------------------------ header
 
@@ -103,9 +104,13 @@ async function poll() {
       loadAnalysis(true);
     }
     wasAnalysing = nowAnalysing;
-    if (before !== after && after === "done") {
+    if (before !== after && after === "done") loadAnalysis(true);
+    // when a run followed here ends (and its analysis with it), show the analysis, unless the user moved away
+    if (S.step === "run" && !userPicked && !autoShown && after === "done" && !S.status.alive && !nowAnalysing &&
+        before !== "none") {
+      autoShown = true;
       loadAnalysis(true);
-      if (S.step === "run" && !userPicked) setTimeout(() => goto("analysis"), 1500);
+      setTimeout(() => { if (S.step === "run" && !userPicked) goto("analysis"); }, 1200);
     }
     if (S.step === "analysis" && after === "done") loadAnalysis();
     $("#offline").hidden = true;
@@ -124,6 +129,7 @@ async function refreshMeta() {
 }
 
 on("goto", step => { userPicked = true; goto(step); });
+on("show", step => { userPicked = false; autoShown = false; goto(step); });
 on("poll-soon", () => { clearTimeout(pollTimer); pollTimer = setTimeout(poll, 300); });
 on("analysis-started", () => { wasAnalysing = true; emit("poll-soon"); });
 on("saved", () => emit("poll-soon"));

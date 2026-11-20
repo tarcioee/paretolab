@@ -60,7 +60,7 @@ export async function startRun() {
   try {
     await api("/api/run", { retry_failed: retryFailed });
     toast(t("run.started_toast"));
-    emit("goto", "run");
+    emit("show", "run");
     emit("poll-soon");
   } catch (e) { toast(errorText(e), true); }
 }
@@ -95,11 +95,16 @@ function statusCard() {
   const message = state?.message_info ? msg(state.message_info) : state?.message || "";
   const canStart = !st?.alive && !analyzing() && S.setupInfo?.exists && S.check?.ok !== false;
   const startLabel = !state ? t("action.start") : p === "done" ? t("action.run_again") : t("action.resume");
-  const elapsed = state?.elapsed_s ?? (state?.started_at && state?.updated_at
+  // elapsed_s is written with the state; while running, add the time since that write
+  let elapsed = state?.elapsed_s ?? (state?.started_at && state?.updated_at
     ? (Date.parse(state.updated_at) - Date.parse(state.started_at)) / 1000 : null);
+  if (elapsed !== null && st?.alive && state?.updated_at) elapsed += Math.max(0, st.now - Date.parse(state.updated_at) / 1000);
   let left = "–";
   if (p === "done") left = duration(0);
-  else if (st?.alive && p === "running") left = state?.eta_s !== undefined && state?.eta_s !== null ? duration(state.eta_s) : t("run.estimating");
+  else if (st?.alive && p === "running") {
+    left = state?.eta_s !== undefined && state?.eta_s !== null
+      ? duration(Math.max(0, state.eta_s - Math.max(0, st.now - Date.parse(state.updated_at) / 1000))) : t("run.estimating");
+  }
   else if (tuning) left = t("run.after_tuning");
   const running = (state?.running ?? []).length;
 
@@ -258,6 +263,7 @@ export function renderRun(force = false) {
   // redraw only when something shown changed (the logs count only on the details tab)
   const { now, logs, ...shown } = S.status;
   const key = JSON.stringify([view, shown, view === "details" ? logs : null, logChoice, retryFailed,
+    S.status.alive ? Math.floor(now / 5) : 0,
     document.documentElement.lang, S.check?.ok, S.setupInfo?.exists]);
   if (!force && key === runKey) return;
   runKey = key;

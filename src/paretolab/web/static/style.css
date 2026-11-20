@@ -175,7 +175,8 @@ details.hp.off { opacity: .6; }
 .summary-note { font-weight: 400; color: var(--muted); font-size: .85rem; margin-left: 10px; }
 .hp-body { padding: 4px 12px 12px; background: var(--card); border-radius: 0 0 10px 10px; }
 table.params td { vertical-align: top; }
-table.params input[type=number], table.params select { width: 130px; min-width: 0; }
+table.params input[type=number], table.params select { width: 118px; min-width: 0; }
+table.params td.mono { white-space: nowrap; }
 .type-tag { font-size: .76rem; color: var(--muted); margin-left: 6px; }
 details.card > summary { cursor: pointer; list-style: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 details.card > summary::-webkit-details-marker { display: none; }
